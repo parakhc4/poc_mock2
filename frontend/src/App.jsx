@@ -194,8 +194,14 @@ export default function App() {
     <div className="flex h-screen bg-[#F8FAFC] text-slate-900 font-sans overflow-hidden">
       <aside className="w-64 bg-[#0F172A] text-white flex flex-col shadow-2xl">
         <div className="p-6 border-b border-slate-700 bg-[#1E293B] flex items-center gap-3">
-          <div className="w-8 h-8 bg-indigo-500 rounded flex items-center justify-center"><Box size={20} /></div>
-          <span className="font-bold text-sm tracking-widest uppercase">Upstrail APS</span>
+          <div className="w-8 h-8 bg-indigo-500 rounded flex items-center justify-center overflow-hidden">
+          <img
+            src="/assets/logo_deno.png"
+            alt="icon"
+            className="w-5 h-5 object-cover"
+          />
+        </div>
+          <span className="font-bold text-sm tracking-widest uppercase">Deno</span>
         </div>
         <nav className="flex-1 p-4 space-y-1 mt-4 overflow-y-auto">
           <NavItem icon={<Database size={18}/>} label="Data Management" active={activeTab === 'data'} onClick={() => setActiveTab('data')} />
@@ -225,7 +231,7 @@ export default function App() {
         <div className="flex-1 overflow-auto p-8">
           {activeTab === 'data' && (
             <div className="max-w-4xl mx-auto">
-              <div className="mb-8"><h3 className="text-lg font-bold text-slate-800">Supply Chain Master Data</h3><p className="text-xs text-slate-500 mt-1">Upload CSV or Excel files containing Demand, BOM, Items, and Resources.</p></div>
+              <div className="mb-8"><h3 className="text-lg font-bold text-slate-800">Data Management</h3><p className="text-xs text-slate-500 mt-1">Upload CSV or Excel files containing Demand, BOM, Items, and Resources.</p></div>
               <div className="bg-white rounded-xl border-2 border-dashed border-slate-200 p-12 text-center flex flex-col items-center justify-center transition-all hover:border-indigo-300">
                 <UploadCloud size={48} className="text-slate-200 mb-4" />
                 <h3 className="font-bold text-slate-700 mb-6 uppercase text-sm tracking-widest">Select Files</h3>
