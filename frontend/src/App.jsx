@@ -3,9 +3,54 @@ import axios from 'axios';
 import { 
   LayoutDashboard, Database, Play, Box, Truck, BarChart3, 
   UploadCloud, FileText, Loader2, Search, ClipboardList, AlertCircle,
-  Settings, ChevronRight, ChevronDown
+  Settings, ChevronRight, ChevronDown, Share2
 } from 'lucide-react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+
+// React Flow Imports
+import { ReactFlow, Background, Controls, MarkerType, Handle, Position } from '@xyflow/react';
+import '@xyflow/react/dist/style.css';
+
+// --- CUSTOM GRAPH NODES WITH HANDLES ---
+
+/**
+ * Material Node: Triangle shape
+ * Used for Items (FG, SFG, RM) and terminal Supplier nodes.
+ */
+const MaterialNode = ({ data }) => (
+  <div className="flex flex-col items-center group relative p-4">
+    {/* Target handle receives flow from the left */}
+    <Handle type="target" position={Position.Left} className="w-2 h-2 !bg-indigo-400 border-none" />
+    <div className="w-0 h-0 border-l-[30px] border-l-transparent border-r-[30px] border-r-transparent border-b-[50px] border-b-indigo-600 drop-shadow-md transition-transform group-hover:scale-110 relative">
+       <span className="absolute top-6 left-1/2 -translate-x-1/2 text-[7px] font-black text-white uppercase tracking-tighter">
+         {data.type}
+       </span>
+    </div>
+    <div className="mt-2 text-[10px] font-bold bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200 whitespace-nowrap">
+      {data.label}
+    </div>
+    {/* Source handle sends flow to the right */}
+    <Handle type="source" position={Position.Right} className="w-2 h-2 !bg-indigo-400 border-none" />
+  </div>
+);
+
+/**
+ * Activity Node: Circle shape
+ * Used for BOM (displays BOM ID) and Suppliers (displays Supplier Name).
+ */
+const ActivityNode = ({ data }) => (
+  <div className="flex flex-col items-center group relative p-4">
+    <Handle type="target" position={Position.Left} className="w-2 h-2 !bg-amber-400 border-none" />
+    <div className="w-14 h-14 rounded-full bg-amber-50 border-2 border-amber-400 flex items-center justify-center shadow-md transition-all group-hover:border-amber-600 group-hover:bg-amber-100">
+      <span className="text-[8px] font-black text-amber-700 text-center px-1 leading-tight uppercase">
+        {data.label}
+      </span>
+    </div>
+    <Handle type="source" position={Position.Right} className="w-2 h-2 !bg-amber-400 border-none" />
+  </div>
+);
+
+const nodeTypes = { material: MaterialNode, activity: ActivityNode };
 
 export default function App() {
   const [files, setFiles] = useState([]);
@@ -35,7 +80,11 @@ export default function App() {
     try {
       const response = await axios.post('http://localhost:8000/solve', formData);
       setResult(response.data);
-      if (response.data.mrp) setSelectedItem(Object.keys(response.data.mrp)[0]);
+      
+      // Default selection logic: Pick the first item from master data list
+      if (response.data.raw_data?.items?.length > 0) {
+        setSelectedItem(response.data.raw_data.items[0].ItemID);
+      }
       if (response.data.trace) setSelectedTrace(response.data.trace[0]);
     } catch (error) {
       console.error("Solver Error:", error);
@@ -43,6 +92,114 @@ export default function App() {
       setLoading(false);
     }
   };
+
+  // --- NETWORK GRAPH LOGIC ---
+  const { nodes, edges } = useMemo(() => {
+    if (!result?.raw_data || !selectedItem) return { nodes: [], edges: [] };
+
+    const newNodes = [];
+    const newEdges = [];
+    const visited = new Set();
+    const { bom, supplier_master, items } = result.raw_data;
+
+    const traceUpstream = (itemId, x, y, level = 0) => {
+      const nodeKey = `${itemId}_${level}`;
+      if (visited.has(nodeKey)) return;
+      visited.add(nodeKey);
+
+      const itemInfo = items?.find(i => i.ItemID === itemId);
+      const typeLabel = itemInfo?.Type || (itemId.startsWith('RM') ? 'RM' : 'WIP');
+
+      // 1. Add Material Triangle
+      newNodes.push({
+        id: itemId,
+        type: 'material',
+        data: { label: itemId, type: typeLabel },
+        position: { x, y },
+      });
+
+      // 2. Trace BOM (Components)
+      const components = bom?.filter(b => b.ParentID === itemId) || [];
+      components.forEach((comp, idx) => {
+        const activityId = `act_bom_${itemId}_${comp.ChildID}_${comp.BOMId}`;
+        const verticalOffset = (idx - (components.length - 1) / 2) * 220;
+        const childX = x - 500;
+        const childY = y + verticalOffset;
+
+        // BOM Activity Circle (Shows BOM ID)
+        newNodes.push({
+          id: activityId,
+          type: 'activity',
+          data: { label: comp.BOMId },
+          position: { x: x - 250, y: childY },
+        });
+
+        // Visible Arrows
+        newEdges.push({ 
+          id: `e-${comp.ChildID}-${activityId}`, 
+          source: comp.ChildID, 
+          target: activityId, 
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#6366f1' },
+          style: { stroke: '#6366f1', strokeWidth: 2 }
+        });
+        newEdges.push({ 
+          id: `e-${activityId}-${itemId}`, 
+          source: activityId, 
+          target: itemId, 
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#6366f1' },
+          style: { stroke: '#6366f1', strokeWidth: 2 }
+        });
+
+        traceUpstream(comp.ChildID, childX, childY, level + 1);
+      });
+
+      // 3. Trace Suppliers
+      const suppliers = supplier_master?.filter(s => s.ItemID === itemId) || [];
+      suppliers.forEach((sup, idx) => {
+        const activityId = `act_sup_${itemId}_${sup.SupplierID}`;
+        const sourceMaterialId = `${itemId}_at_${sup.SupplierID}`;
+        
+        const verticalOffset = (idx + components.length - (suppliers.length - 1) / 2) * 220;
+        const supX = x - 500;
+        const supY = y + verticalOffset;
+
+        // Supplier Activity Circle (Shows Supplier Name)
+        newNodes.push({
+          id: activityId,
+          type: 'activity',
+          data: { label: sup.SupplierName },
+          position: { x: x - 250, y: supY },
+        });
+
+        // Terminal Triangle: Material at Supplier
+        newNodes.push({
+            id: sourceMaterialId,
+            type: 'material',
+            data: { label: `${itemId} (Supplier)`, type: 'RM' },
+            position: { x: supX, y: supY },
+        });
+
+        // Visible Arrows (Dashed for Supply)
+        newEdges.push({ 
+          id: `e-${sourceMaterialId}-${activityId}`, 
+          source: sourceMaterialId, 
+          target: activityId, 
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#f59e0b' },
+          style: { stroke: '#f59e0b', strokeWidth: 2, strokeDasharray: '5,5' }
+        });
+        newEdges.push({ 
+          id: `e-${activityId}-${itemId}`, 
+          source: activityId, 
+          target: itemId, 
+          markerEnd: { type: MarkerType.ArrowClosed, color: '#f59e0b' },
+          style: { stroke: '#f59e0b', strokeWidth: 2, strokeDasharray: '5,5' }
+        });
+      });
+    };
+
+    traceUpstream(selectedItem, 1200, 400);
+    return { nodes: newNodes, edges: newEdges };
+  }, [result, selectedItem]);
 
   const chartData = useMemo(() => {
     if (!result?.planned_orders) return [];
@@ -69,11 +226,11 @@ export default function App() {
         <nav className="flex-1 p-4 space-y-1 mt-4 overflow-y-auto">
           <NavItem icon={<LayoutDashboard size={18}/>} label="Executive Summary" active={activeTab === 'executive'} onClick={() => setActiveTab('executive')} />
           <NavItem icon={<ClipboardList size={18}/>} label="MRP Inventory Plan" active={activeTab === 'mrp'} onClick={() => setActiveTab('mrp')} />
+          <NavItem icon={<Share2 size={18}/>} label="Network Graph" active={activeTab === 'network'} onClick={() => setActiveTab('network')} />
           <NavItem icon={<Truck size={18}/>} label="Production Plan" active={activeTab === 'plan'} onClick={() => setActiveTab('plan')} />
           <NavItem icon={<Search size={18}/>} label="Trace RCA" active={activeTab === 'rca'} onClick={() => setActiveTab('rca')} />
         </nav>
 
-        {/* PARAMETERS SECTION */}
         <div className="p-4 bg-[#1E293B] border-t border-slate-700">
           <div className="flex items-center gap-2 mb-4 text-slate-400">
             <Settings size={14} />
@@ -82,19 +239,13 @@ export default function App() {
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-slate-300">Capacity Constrained</span>
-              <button 
-                onClick={() => setIsConstrained(!isConstrained)}
-                className={`w-8 h-4 rounded-full transition-colors relative ${isConstrained ? 'bg-indigo-500' : 'bg-slate-600'}`}
-              >
+              <button onClick={() => setIsConstrained(!isConstrained)} className={`w-8 h-4 rounded-full relative ${isConstrained ? 'bg-indigo-500' : 'bg-slate-600'}`}>
                 <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${isConstrained ? 'translate-x-4' : 'translate-x-0'}`} />
               </button>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-medium text-slate-300">Build Ahead</span>
-              <button 
-                onClick={() => setBuildAhead(!buildAhead)}
-                className={`w-8 h-4 rounded-full transition-colors relative ${buildAhead ? 'bg-indigo-500' : 'bg-slate-600'}`}
-              >
+              <button onClick={() => setBuildAhead(!buildAhead)} className={`w-8 h-4 rounded-full relative ${buildAhead ? 'bg-indigo-500' : 'bg-slate-600'}`}>
                 <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${buildAhead ? 'translate-x-4' : 'translate-x-0'}`} />
               </button>
             </div>
@@ -127,7 +278,7 @@ export default function App() {
           {!result ? (
             <div className="bg-white rounded-xl border-2 border-dashed border-slate-200 p-20 text-center flex flex-col items-center justify-center">
               <UploadCloud size={48} className="text-slate-200 mb-4" />
-              <h3 className="font-bold text-slate-700 mb-6">Upload Master Data</h3>
+              <h3 className="font-bold text-slate-700 mb-6 uppercase text-sm tracking-widest">Upload Master Data</h3>
               <input type="file" multiple onChange={(e) => setFiles(Array.from(e.target.files))} className="hidden" id="f-up" />
               <label htmlFor="f-up" className="bg-indigo-600 text-white px-8 py-2 rounded font-bold text-xs cursor-pointer shadow-xl shadow-indigo-100">Browse Files</label>
               <div className="mt-6 flex flex-wrap justify-center gap-2 max-w-md">
@@ -135,8 +286,9 @@ export default function App() {
               </div>
             </div>
           ) : (
-            <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
+            <div className="h-[calc(100%-1rem)] animate-in fade-in slide-in-from-bottom-2 duration-500">
               
+              {/* TAB: EXECUTIVE SUMMARY */}
               {activeTab === 'executive' && (
                 <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm h-[450px]">
                   <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-8">Supply Inflow Horizon</h3>
@@ -153,6 +305,45 @@ export default function App() {
                 </div>
               )}
 
+              {/* TAB: NETWORK GRAPH - Updated to show all items */}
+              {activeTab === 'network' && (
+                <div className="flex flex-col h-full space-y-4">
+                  <div className="flex justify-between items-center">
+                    <select 
+                      value={selectedItem} 
+                      onChange={(e) => setSelectedItem(e.target.value)} 
+                      className="bg-white border border-slate-200 rounded px-4 py-2 text-xs font-bold outline-none shadow-sm min-w-[300px]"
+                    >
+                      {/* Mapping through raw_data.items ensures items without demand are shown */}
+                      {result.raw_data.items.map(item => <option key={item.ItemID} value={item.ItemID}>{item.ItemID}</option>)}
+                    </select>
+                    <div className="flex gap-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[10px] border-b-indigo-600"></div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Materials</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <div className="w-3 h-3 rounded-full bg-amber-400"></div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Activity</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex-1 bg-white rounded-2xl border border-slate-200 shadow-inner overflow-hidden relative">
+                    <ReactFlow
+                      nodes={nodes}
+                      edges={edges}
+                      nodeTypes={nodeTypes}
+                      fitView
+                    >
+                      <Background color="#f1f5f9" gap={20} />
+                      <Controls />
+                    </ReactFlow>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB: PRODUCTION PLAN */}
               {activeTab === 'plan' && (
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                   <table className="w-full text-left text-xs">
@@ -164,7 +355,6 @@ export default function App() {
                         <th className="px-6 py-4 text-right">Qty</th>
                         <th className="px-6 py-4">Start</th>
                         <th className="px-6 py-4">Finish</th>
-                        <th className="px-6 py-4 text-right">LT (Days)</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100">
@@ -176,7 +366,6 @@ export default function App() {
                           <td className="px-6 py-3 text-right">{o.qty}</td>
                           <td className="px-6 py-3 text-slate-400">{o.start}</td>
                           <td className="px-6 py-3 text-slate-400">{o.finish}</td>
-                          <td className="px-6 py-3 text-right text-slate-400">{o.lt_days}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -184,6 +373,7 @@ export default function App() {
                 </div>
               )}
 
+              {/* TAB: MRP INVENTORY PLAN */}
               {activeTab === 'mrp' && (
                 <div className="space-y-6">
                   <select value={selectedItem} onChange={(e) => setSelectedItem(e.target.value)} className="bg-white border border-slate-200 rounded px-4 py-2 text-xs font-bold outline-none shadow-sm min-w-[300px]">
@@ -199,19 +389,13 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
-                        {/* 1. STARTING STOCK (Including OnHand) */}
                         <tr className="bg-slate-50/50">
                            <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-slate-600">Starting Stock</td>
                            {Object.values(result.mrp[selectedItem]).map((b, i) => (
-                             <td key={i} className="px-4 py-2 text-right text-slate-500">
-                               {/* Add Starting Stock + Inflow OnHand visually */}
-                               {(b.starting_stock || 0) + (b.inflow_onhand || 0)}
-                             </td>
+                             <td key={i} className="px-4 py-2 text-right text-slate-500">{(b.starting_stock || 0) + (b.inflow_onhand || 0)}</td>
                            ))}
                         </tr>
-
-                        {/* 2. INFLOW (Clickable Group) */}
-                        <tr onClick={() => setExpandInflow(!expandInflow)} className="cursor-pointer hover:bg-slate-50 transition-colors">
+                        <tr onClick={() => setExpandInflow(!expandInflow)} className="cursor-pointer hover:bg-slate-50">
                            <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-indigo-600 flex items-center gap-2">
                              {expandInflow ? <ChevronDown size={10}/> : <ChevronRight size={10}/>} Inflow
                            </td>
@@ -221,8 +405,6 @@ export default function App() {
                              </td>
                            ))}
                         </tr>
-                        
-                        {/* 2a. EXPANDED INFLOW ROWS */}
                         {expandInflow && (
                            <>
                               <tr className="bg-indigo-50/30"><td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ WIP</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{b.inflow_wip || '-'}</td>)}</tr>
@@ -230,9 +412,7 @@ export default function App() {
                               <tr className="bg-indigo-50/30"><td className="px-4 py-1 text-indigo-500 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Fresh Plan</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-indigo-500 font-bold">{b.inflow_fresh || '-'}</td>)}</tr>
                            </>
                         )}
-
-                        {/* 3. OUTFLOW (Clickable Group) */}
-                        <tr onClick={() => setExpandOutflow(!expandOutflow)} className="cursor-pointer hover:bg-slate-50 transition-colors">
+                        <tr onClick={() => setExpandOutflow(!expandOutflow)} className="cursor-pointer hover:bg-slate-50">
                            <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-amber-600 flex items-center gap-2">
                              {expandOutflow ? <ChevronDown size={10}/> : <ChevronRight size={10}/>} Outflow
                            </td>
@@ -242,22 +422,10 @@ export default function App() {
                              </td>
                            ))}
                         </tr>
-
-                        {/* 3a. EXPANDED OUTFLOW ROWS */}
-                        {expandOutflow && (
-                           <>
-                              <tr className="bg-amber-50/30"><td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Direct Demand</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{b.outflow_direct || '-'}</td>)}</tr>
-                              <tr className="bg-amber-50/30"><td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Dependent Demand</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{b.outflow_dep || '-'}</td>)}</tr>
-                           </>
-                        )}
-
-                        {/* 4. ENDING STOCK */}
                         <tr className="bg-slate-100/50 border-t border-slate-200">
                            <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-slate-800">Ending Stock</td>
                            {Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className="px-4 py-2 text-right font-bold text-slate-800">{bucket.ending_stock}</td>)}
                         </tr>
-
-                        {/* 5. SHORTAGE */}
                          <tr>
                            <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-red-500">Shortage</td>
                            {Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className={`px-4 py-2 text-right font-bold ${bucket.shortage > 0 ? 'text-red-500 bg-red-50' : 'text-slate-200'}`}>{bucket.shortage > 0 ? bucket.shortage : '-'}</td>)}
@@ -265,32 +433,10 @@ export default function App() {
                       </tbody>
                     </table>
                   </div>
-
-                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-                     <h4 className="text-xs font-bold uppercase text-slate-400 mb-4">Purchasing Requirements for {selectedItem}</h4>
-                     {result.planned_orders.filter(o => o.type === 'Purchase' && o.item === selectedItem).length === 0 ? (
-                        <p className="text-xs text-slate-400 italic">No purchase orders generated for this item.</p>
-                     ) : (
-                        <table className="w-full text-left text-xs">
-                           <thead className="bg-slate-50 text-slate-500">
-                              <tr><th className="p-2">Supplier</th><th className="p-2 text-right">Qty</th><th className="p-2">Release</th><th className="p-2">Receipt</th></tr>
-                           </thead>
-                           <tbody>
-                              {result.planned_orders.filter(o => o.type === 'Purchase' && o.item === selectedItem).map((po, idx) => (
-                                 <tr key={idx} className="border-b border-slate-100">
-                                    <td className="p-2 font-bold text-indigo-600">{po.supplier}</td>
-                                    <td className="p-2 text-right">{po.qty}</td>
-                                    <td className="p-2 text-slate-400">{po.start}</td>
-                                    <td className="p-2 text-slate-400">{po.finish}</td>
-                                 </tr>
-                              ))}
-                           </tbody>
-                        </table>
-                     )}
-                  </div>
                 </div>
               )}
 
+              {/* TAB: TRACE RCA */}
               {activeTab === 'rca' && (
                 <div className="grid grid-cols-4 gap-8 h-[600px]">
                   <div className="col-span-1 space-y-2 overflow-auto pr-4 border-r border-slate-200">
@@ -307,21 +453,9 @@ export default function App() {
                       <h4 className="text-xs font-bold mb-4">Decision Trace for {selectedTrace?.item}</h4>
                       {selectedTrace?.steps?.map((s, i) => (
                         <div key={i} className="mb-4 pl-4 border-l-2 border-indigo-100 flex gap-4 items-start animate-in fade-in duration-300">
-                          <span className={`
-                             px-2 py-0.5 rounded-[4px] text-[9px] font-black uppercase whitespace-nowrap
-                             ${s.action === 'Infeasible' ? 'bg-red-50 text-red-600' : 
-                               s.action === 'Production' ? 'bg-indigo-50 text-indigo-600' :
-                               s.action === 'Purchase' ? 'bg-emerald-50 text-emerald-600' :
-                               'bg-slate-100 text-slate-600'}
-                          `}>{s.action}</span>
+                          <span className={`px-2 py-0.5 rounded-[4px] text-[9px] font-black uppercase whitespace-nowrap ${s.action === 'Infeasible' ? 'bg-red-50 text-red-600' : s.action === 'Production' ? 'bg-indigo-50 text-indigo-600' : s.action === 'Purchase' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>{s.action}</span>
                           <div>
                             <p className="text-xs font-bold text-slate-700">{s.reason || s.msg || 'Resolved'}</p>
-                            <div className="flex gap-4 mt-1">
-                               {s.item && <span className="text-[10px] text-slate-400 font-mono">ITEM: {s.item}</span>}
-                               {s.date && <span className="text-[10px] text-slate-400 font-mono">DUE: {s.date}</span>}
-                               {s.supplier && <span className="text-[10px] text-slate-400 font-mono">SUP: {s.supplier}</span>}
-                               {s.resource && <span className="text-[10px] text-slate-400 font-mono">RES: {s.resource}</span>}
-                            </div>
                           </div>
                         </div>
                       ))}
@@ -333,26 +467,6 @@ export default function App() {
           )}
         </div>
       </main>
-
-      {/* DEBUG PANEL */}
-      {result && (
-        <div className="fixed bottom-6 right-6 w-80 max-h-[400px] bg-slate-900 text-indigo-400 p-5 rounded-2xl shadow-2xl border border-indigo-500/30 overflow-auto z-50 font-mono text-[10px]">
-          <div className="flex justify-between items-center mb-4 border-b border-slate-800 pb-2">
-            <span className="font-bold text-white tracking-widest uppercase text-[9px]">Backend Data Inspector</span>
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-          </div>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-2 text-white bg-slate-800/50 p-2 rounded">
-              <div>Orders: <span className="text-indigo-300">{result.planned_orders?.length || 0}</span></div>
-              <div>Trace: <span className="text-indigo-300">{result.trace?.length || 0}</span></div>
-            </div>
-            <div>
-              <p className="text-slate-500 uppercase text-[8px] mb-1">Constraints Active?</p>
-              <span className={isConstrained ? "text-green-400" : "text-red-400"}>{isConstrained.toString().toUpperCase()}</span>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

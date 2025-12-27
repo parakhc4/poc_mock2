@@ -2,6 +2,7 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 import pandas as pd
 import io
+import numpy as np
 from datetime import datetime
 try:
     from solver_engine import run_solver 
@@ -29,14 +30,13 @@ async def solve(
         # 1. Initialize data dictionary
         data = {k: None for k in ['demand', 'items', 'bom', 'routing', 'resource_routing', 'supplies', 'supplier_master']}
         
-        # PRIORITIZED Mapping: Specific patterns come BEFORE general ones
         mapping = {
             'demand': ['demand', 'sales'], 
             'bom': ['bom', 'bill', 'structure'], 
-            'resource_routing': ['resourcerouting', 'resource_routing'], # Check before 'routing'
+            'resource_routing': ['resourcerouting', 'resource_routing'],
             'routing': ['routing', 'operations'], 
-            'supplier_master': ['suppliermaster', 'supplier_master', 'vendor'], # Check before 'items'
-            'items': ['item', 'article', 'product'], # Removed broad 'master' to prevent collision
+            'supplier_master': ['suppliermaster', 'supplier_master', 'vendor'],
+            'items': ['item', 'article', 'product'], 
             'supplies': ['supplies', 'stock', 'inventory']
         }
 
@@ -47,7 +47,6 @@ async def solve(
             if filename.endswith(('.xlsx', '.xls')):
                 xls = pd.read_excel(io.BytesIO(contents), sheet_name=None)
                 for sheet_name, df in xls.items():
-                    # Normalize sheet name for matching
                     clean_sheet = sheet_name.lower().replace(" ", "").replace("_", "").replace("-", "")
                     matched_key = None
                     for key, patterns in mapping.items():
@@ -70,6 +69,14 @@ async def solve(
 
         # 3. Run Solver
         results = run_solver(data, horizon, sim_start, is_constrained, build_ahead)
+        
+        # 4. JSON Compliance: Replace NaN with None (null in JSON)
+        # We attach raw_data so the Network Graph can map items NOT in the demand list
+        results["raw_data"] = {
+            "bom": data['bom'].replace({np.nan: None}).to_dict('records') if data['bom'] is not None else [],
+            "supplier_master": data['supplier_master'].replace({np.nan: None}).to_dict('records') if data['supplier_master'] is not None else [],
+            "items": data['items'].replace({np.nan: None}).to_dict('records') if data['items'] is not None else []
+        }
         
         return results
 
