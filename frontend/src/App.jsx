@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Database, Play, Box, Truck, BarChart3, 
   UploadCloud, FileText, Loader2, Search, ClipboardList, AlertCircle,
   Settings, ChevronRight, ChevronDown, Share2, Download, Trash2, CheckCircle2, Factory,
-  TrendingUp, AlertTriangle, Target, Activity, Calendar, Sliders
+  TrendingUp, AlertTriangle, Target, Activity, Calendar, Sliders, IndianRupee
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, 
@@ -24,7 +24,7 @@ const formatNum = (val) => {
   const n = Number(val);
   if (isNaN(n)) return '-';
   if (Math.abs(n) < 0.00001) return '0';
-  return n.toLocaleString(undefined, { 
+  return n.toLocaleString('en-IN', { 
     minimumFractionDigits: 0, 
     maximumFractionDigits: 2 
   });
@@ -71,6 +71,11 @@ export default function App() {
 
   const [expandInflow, setExpandInflow] = useState(false);
   const [expandOutflow, setExpandOutflow] = useState(false);
+
+  // --- DERIVED PROCUREMENT DATA ---
+  const purchases = useMemo(() => result?.planned_orders?.filter(o => o.type === 'Purchase') || [], [result]);
+  const totalSpend = useMemo(() => purchases.reduce((sum, o) => sum + (o.total_cost || 0), 0), [purchases]);
+  const totalUnitsOrdered = useMemo(() => purchases.reduce((sum, o) => sum + (o.qty || 0), 0), [purchases]);
 
   // --- SOLVER METRICS CALCULATION ---
   const metrics = useMemo(() => {
@@ -139,12 +144,21 @@ export default function App() {
 
   const handleExportPurchases = () => {
     if (!result?.planned_orders) return;
-    const purchases = result.planned_orders.filter(o => o.type === 'Purchase');
-    const data = purchases.map(o => ({ "Order ID": o.id, "Purchase Date": o.start, "Arrival Date": o.finish, "Supplier": o.supplier, "Item": o.item, "Qty": o.qty }));
+    const data = purchases.map(o => ({ 
+      "Order ID": o.id, 
+      "Purchase Date": o.start, 
+      "Arrival Date": o.finish, 
+      "Buyer Code": o.buyer_code,
+      "Supplier": o.supplier, 
+      "Item": o.item, 
+      "Qty": o.qty,
+      "Rate": o.rate,
+      "Total Cost": o.total_cost
+    }));
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Purchase Plan");
-    XLSX.writeFile(workbook, `global_purchase_plan_${new Date().toISOString().split('T')[0]}.xlsx`);
+    XLSX.writeFile(workbook, `purchase_plan_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const handleExportProduction = () => {
@@ -193,13 +207,12 @@ export default function App() {
   }, [result, selectedItem]);
 
   return (
-    <div className="flex h-screen bg-[#F8FAFC] text-slate-900 font-sans overflow-hidden">
+    <div className="flex h-screen bg-[#F8FAFC] text-slate-900 font-sans overflow-hidden" style={{ fontFamily: "'Inter', sans-serif" }}>
+      {/* SIDEBAR */}
       <aside className="w-64 bg-[#0F172A] text-white flex flex-col shadow-2xl">
         <div className="p-6 border-b border-slate-700 bg-[#1E293B] flex items-center gap-3">
-          {/* <div className="w-8 h-8 bg-indigo-500 rounded flex items-center justify-center overflow-hidden"> */}
-            <img src={denoLogo} alt="icon" className="w-10 h-10 object-cover" />
-          {/* </div> */}
-          <span className="font-bold text-sm tracking-widest uppercase">APS</span>
+          <img src={denoLogo} alt="icon" className="w-10 h-10 object-cover" />
+          <span className="font-bold text-sm tracking-widest uppercase">APS Core</span>
         </div>
         
         <nav className="flex-1 p-4 space-y-1 mt-4 overflow-y-auto">
@@ -217,19 +230,21 @@ export default function App() {
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden">
+        {/* TOP HEADER */}
         <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm z-10">
           <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Workspace / {activeTab}</h2>
-<button 
-  onClick={handleSolve} 
-  disabled={loading || files.length === 0} 
-  className="relative flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white px-5 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-30 shadow-[0_4px_12px_rgba(99,102,241,0.25)] active:scale-95"
->
-  {loading ? <Loader2 className="animate-spin" size={14}/> : <Play size={14} fill="currentColor"/>} 
-  {loading ? "ANALYZING CONSTRAINTS..." : "RUN OPTIMIZATION"}
-</button>
+          <button 
+            onClick={handleSolve} 
+            disabled={loading || files.length === 0} 
+            className="relative flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white px-5 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-30 shadow-[0_4px_12px_rgba(99,102,241,0.25)] active:scale-95"
+          >
+            {loading ? <Loader2 className="animate-spin" size={14}/> : <Play size={14} fill="currentColor"/>} 
+            {loading ? "ANALYZING CONSTRAINTS..." : "RUN OPTIMIZATION"}
+          </button>
         </header>
 
         <div className="flex-1 overflow-auto p-8">
+          {/* DATA MANAGEMENT TAB */}
           {activeTab === 'data' && (
             <div className="max-w-4xl mx-auto">
               <div className="mb-8"><h3 className="text-lg font-bold text-slate-800">Data Management</h3><p className="text-xs text-slate-500 mt-1">Upload CSV or Excel files containing Demand, BOM, Items, and Resources.</p></div>
@@ -255,6 +270,7 @@ export default function App() {
             </div>
           )}
 
+          {/* PARAMETERS TAB */}
           {activeTab === 'parameters' && (
             <div className="max-w-xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
               <div className="mb-8">
@@ -321,11 +337,12 @@ export default function App() {
             </div>
           )}
 
+          {/* EXECUTIVE SUMMARY TAB */}
           {result && activeTab === 'executive' && metrics && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
               <div className="grid grid-cols-4 gap-6">
                 <KPICard label="Fulfillment Rate" value={`${metrics.fulfillmentRate}%`} icon={<Target className="text-indigo-500"/>} trend={metrics.fulfillmentRate > 90 ? "Healthy" : "Attention"} />
-                <KPICard label="On-Time Delivery" value={metrics.onTimeOrders} icon={<Activity className="text-green-500"/>} trend={`of ${result.trace.length} Orders`} />
+                <KPICard label="Est. Total Spend" value={`₹${formatNum(totalSpend)}`} icon={<IndianRupee className="text-emerald-500"/>} trend="Budget" />
                 <KPICard label="Total Shortages" value={formatNum(metrics.totalShortageQty)} icon={<AlertTriangle className="text-red-500"/>} />
                 <KPICard label="Planned Qty" value={formatNum(metrics.totalDemandQty)} icon={<TrendingUp className="text-blue-500"/>} />
               </div>
@@ -373,16 +390,16 @@ export default function App() {
                     {metrics.criticalItems.map((item, i) => (
                       <div key={i} className="flex justify-between items-center p-3 bg-red-50/50 rounded-lg border border-red-100">
                         <span className="text-xs font-black text-slate-700">{item.item}</span>
-                        <span className="text-xs font-black text-red-600">{formatNum(item.qty)} Units</span>
+                        <span className="text-xs font-black text-red-600 font-mono">{formatNum(item.qty)} Units</span>
                       </div>
                     ))}
-                    {metrics.criticalItems.length === 0 && <p className="text-xs text-slate-400 italic">No shortages detected.</p>}
+                    {metrics.criticalItems.length === 0 && <p className="text-xs text-slate-400 italic font-sans">No shortages detected.</p>}
                   </div>
                 </div>
                 <div className="bg-white p-6 rounded-xl border border-slate-200">
                   <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Recent System Logs</h3>
                   <div className="space-y-2 max-h-[160px] overflow-auto">
-                    {result.system_logs.slice(-5).map((log, i) => (
+                    {result.system_logs?.slice(-5).map((log, i) => (
                       <div key={i} className="text-[10px] font-medium text-slate-500 border-l-2 border-slate-200 pl-3 py-1">{log}</div>
                     ))}
                   </div>
@@ -391,11 +408,12 @@ export default function App() {
             </div>
           )}
 
+          {/* NETWORK GRAPH TAB */}
           {result && activeTab === 'network' && (
             <div className="flex flex-col h-full space-y-4">
               <div className="flex justify-between items-center">
                 <select value={selectedItem} onChange={(e) => setSelectedItem(e.target.value)} className="bg-white border border-slate-200 rounded px-4 py-2 text-xs font-bold min-w-[300px]">
-                  {result.raw_data.items.map(item => <option key={item.ItemID} value={item.ItemID}>{item.ItemID}</option>)}
+                  {result.raw_data?.items?.map(item => <option key={item.ItemID} value={item.ItemID}>{item.ItemID}</option>)}
                 </select>
                 <div className="flex gap-4"><div className="flex items-center gap-2"><div className="w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-b-[10px] border-b-indigo-600"></div><span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Materials</span></div><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-amber-400"></div><span className="text-[10px] font-bold text-slate-400 uppercase tracking-tighter">Activity</span></div></div>
               </div>
@@ -403,59 +421,120 @@ export default function App() {
             </div>
           )}
 
+          {/* PRODUCTION PLAN TAB */}
           {result && activeTab === 'plan' && (
             <div className="space-y-4">
               <div className="flex items-center justify-between"><div className="flex items-center gap-2"><Factory size={16} className="text-indigo-600"/><h3 className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Global Production Plan</h3></div><button onClick={handleExportProduction} className="flex items-center gap-2 bg-slate-800 hover:bg-black text-white px-3 py-1.5 rounded text-[10px] font-bold transition-all shadow-md"><Download size={12}/> EXPORT EXCEL</button></div>
               <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                <table className="w-full text-left text-xs">
-                  <thead className="bg-slate-50 border-b border-slate-200 font-black text-slate-400 uppercase tracking-tighter"><tr><th className="px-6 py-4">Order ID</th><th className="px-6 py-4">Item</th><th className="px-6 py-4">Supplier/Resource</th><th className="px-6 py-4 text-right">Qty</th><th className="px-6 py-4">Start</th><th className="px-6 py-4">Finish</th></tr></thead>
-                  <tbody className="divide-y divide-slate-100">{result.planned_orders?.filter(o => o.type === 'Production').map((o, i) => (<tr key={i} className="hover:bg-slate-50 transition-colors"><td className="px-6 py-3 font-mono text-indigo-600">{o.id}</td><td className="px-6 py-3 font-bold">{o.item}</td><td className="px-6 py-3 text-slate-500 font-medium">{o.res || 'Internal'}</td><td className="px-6 py-3 text-right">{formatNum(o.qty)}</td><td className="px-6 py-3 text-slate-400">{o.start}</td><td className="px-6 py-3 text-slate-400">{o.finish}</td></tr>))}</tbody>
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead className="bg-slate-50 border-b border-slate-200 font-black text-slate-400 uppercase tracking-tighter"><tr><th className="px-6 py-4">Order ID</th><th className="px-6 py-4">Item</th><th className="px-6 py-4">Process</th><th className="px-6 py-4 text-right">Qty</th><th className="px-6 py-4">Start</th><th className="px-6 py-4">Finish</th></tr></thead>
+                  <tbody className="divide-y divide-slate-100 font-mono">{result.planned_orders?.filter(o => o.type === 'Production').map((o, i) => (<tr key={i} className="hover:bg-slate-50 transition-colors"><td className="px-6 py-3 text-indigo-600 font-bold">{o.id}</td><td className="px-6 py-3 text-slate-900 font-sans font-bold">{o.item}</td><td className="px-6 py-3 text-slate-500 font-sans font-medium">{o.res || 'Internal'}</td><td className="px-6 py-3 text-right font-bold text-slate-900">{formatNum(o.qty)}</td><td className="px-6 py-3 text-slate-400">{o.start}</td><td className="px-6 py-3 text-slate-400">{o.finish}</td></tr>))}</tbody>
                 </table>
               </div>
             </div>
           )}
 
+          {/* MRP INVENTORY PLAN TAB */}
           {result && activeTab === 'mrp' && (
-            <div className="space-y-12 pb-20">
+            <div className="space-y-12 pb-20 animate-in fade-in duration-500">
               <div className="space-y-6">
                 <select value={selectedItem} onChange={(e) => setSelectedItem(e.target.value)} className="bg-white border border-slate-200 rounded px-4 py-2 text-xs font-bold min-w-[300px]">{Object.keys(result.mrp).map(id => <option key={id} value={id}>{id}</option>)}</select>
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
-                  <table className="w-full text-left text-[10px] border-collapse">
-                    <thead className="bg-slate-50 border-b border-slate-200"><tr><th className="px-4 py-3 sticky left-0 bg-slate-50 z-20 border-r border-slate-200 min-w-[150px]">Bucket</th>{Object.keys(result.mrp[selectedItem]).map(d => <th key={d} className="px-4 py-3 min-w-[100px] text-slate-400 font-medium">{d}</th>)}</tr></thead>
+                  <table className="w-full text-left text-[10px] border-collapse tabular-nums font-mono">
+                    <thead className="bg-slate-50 border-b border-slate-200"><tr><th className="px-4 py-3 sticky left-0 bg-slate-50 z-20 border-r border-slate-200 min-w-[150px] font-sans">Bucket</th>{Object.keys(result.mrp[selectedItem]).map(d => <th key={d} className="px-4 py-3 min-w-[100px] text-slate-400 font-medium">{d}</th>)}</tr></thead>
                     <tbody className="divide-y divide-slate-100">
-                      <tr className="bg-slate-50/50"><td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-slate-600">Starting Stock</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-2 text-right text-slate-500">{formatNum((b.starting_stock || 0) + (b.inflow_onhand || 0))}</td>)}</tr>
-                      <tr onClick={() => setExpandInflow(!expandInflow)} className="cursor-pointer hover:bg-slate-50"><td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-indigo-600 flex items-center gap-2">{expandInflow ? <ChevronDown size={10}/> : <ChevronRight size={10}/>} Inflow</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-2 text-right font-bold text-indigo-600">{formatNum((b.inflow_wip || 0) + (b.inflow_supplier || 0) + (b.inflow_fresh || 0))}</td>)}</tr>
-                      {expandInflow && (<><tr className="bg-indigo-50/30"><td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ WIP</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.inflow_wip)}</td>)}</tr><tr className="bg-indigo-50/30"><td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Supplier Stock</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.inflow_supplier)}</td>)}</tr><tr className="bg-indigo-50/30"><td className="px-4 py-1 text-indigo-500 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Fresh Plan</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-indigo-500 font-bold">{formatNum(b.inflow_fresh)}</td>)}</tr></>)}
-                      <tr onClick={() => setExpandOutflow(!expandOutflow)} className="cursor-pointer hover:bg-slate-50"><td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-amber-600 flex items-center gap-2">{expandOutflow ? <ChevronDown size={10}/> : <ChevronRight size={10}/>} Outflow</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-2 text-right font-bold text-amber-600">{formatNum((b.outflow_direct || 0) + (b.outflow_dep || 0))}</td>)}</tr>
-                      {expandOutflow && (<><tr className="bg-amber-50/30"><td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Direct Demand</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.outflow_direct)}</td>)}</tr><tr className="bg-amber-50/30"><td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Dependent Demand</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.outflow_dep)}</td>)}</tr></>)}
-                      <tr className="bg-slate-100/50 border-t border-slate-200"><td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-slate-800">Ending Stock</td>{Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className="px-4 py-2 text-right font-bold text-slate-800">{formatNum(bucket.ending_stock)}</td>)}</tr>
-                      <tr><td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-red-500">Shortage</td>{Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className={`px-4 py-2 text-right font-bold ${bucket.shortage > 0 ? 'text-red-500 bg-red-50' : 'text-slate-200'}`}>{bucket.shortage > 0 ? formatNum(bucket.shortage) : '-'}</td>)}</tr>
+                      <tr className="bg-slate-50/50"><td className="px-4 py-2 font-black font-sans uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-slate-600">Starting Stock</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-2 text-right text-slate-500">{formatNum((b.starting_stock || 0) + (b.inflow_onhand || 0))}</td>)}</tr>
+                      <tr onClick={() => setExpandInflow(!expandInflow)} className="cursor-pointer hover:bg-slate-50 transition-colors"><td className="px-4 py-2 font-black font-sans uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-indigo-600 flex items-center gap-2">{expandInflow ? <ChevronDown size={10}/> : <ChevronRight size={10}/>} Inflow</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-2 text-right font-bold text-indigo-600">{formatNum((b.inflow_wip || 0) + (b.inflow_supplier || 0) + (b.inflow_fresh || 0))}</td>)}</tr>
+                      {expandInflow && (<><tr className="bg-indigo-50/30"><td className="px-4 py-1 font-sans text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ WIP</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.inflow_wip)}</td>)}</tr><tr className="bg-indigo-50/30"><td className="px-4 py-1 font-sans text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Supplier Stock</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.inflow_supplier)}</td>)}</tr><tr className="bg-indigo-50/30"><td className="px-4 py-1 font-sans text-indigo-500 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Fresh Plan</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-indigo-500 font-bold">{formatNum(b.inflow_fresh)}</td>)}</tr></>)}
+                      <tr onClick={() => setExpandOutflow(!expandOutflow)} className="cursor-pointer hover:bg-slate-50 transition-colors"><td className="px-4 py-2 font-black font-sans uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-amber-600 flex items-center gap-2">{expandOutflow ? <ChevronDown size={10}/> : <ChevronRight size={10}/>} Outflow</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-2 text-right font-bold text-amber-600">{formatNum((b.outflow_direct || 0) + (b.outflow_dep || 0))}</td>)}</tr>
+                      {expandOutflow && (<><tr className="bg-amber-50/30"><td className="px-4 py-1 font-sans text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Direct Demand</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.outflow_direct)}</td>)}</tr><tr className="bg-amber-50/30"><td className="px-4 py-1 font-sans text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Dependent Demand</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.outflow_dep)}</td>)}</tr></>)}
+                      <tr className="bg-slate-100/50 border-t border-slate-200"><td className="px-4 py-2 font-black font-sans uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-slate-800">Ending Stock</td>{Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className="px-4 py-2 text-right font-bold text-slate-800">{formatNum(bucket.ending_stock)}</td>)}</tr>
+                      <tr><td className="px-4 py-2 font-black font-sans uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-red-500">Shortage</td>{Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className={`px-4 py-2 text-right font-bold ${bucket.shortage > 0 ? 'text-red-500 bg-red-50' : 'text-slate-200 font-light'}`}>{bucket.shortage > 0 ? formatNum(bucket.shortage) : '-'}</td>)}</tr>
                     </tbody>
                   </table>
                 </div>
               </div>
+
+              {/* GLOBAL PURCHASE PLAN SECTION */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between"><div className="flex items-center gap-2"><Truck size={16} className="text-indigo-600"/><h3 className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Global Purchase Plan</h3></div><button onClick={handleExportPurchases} className="flex items-center gap-2 bg-slate-800 hover:bg-black text-white px-3 py-1.5 rounded text-[10px] font-bold transition-all shadow-md"><Download size={12}/> EXPORT EXCEL</button></div>
+                
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-                  <table className="w-full text-left text-[10px]">
-                    <thead className="bg-slate-50 border-b border-slate-200 font-black text-slate-400 uppercase tracking-tighter"><tr><th className="px-6 py-4">Purchase Date</th><th className="px-6 py-4">Arrival Date</th><th className="px-6 py-4">Supplier</th><th className="px-6 py-4">Item</th><th className="px-6 py-4 text-right">Qty</th></tr></thead>
-                    <tbody className="divide-y divide-slate-100">{result.planned_orders?.filter(o => o.type === 'Purchase').map((o, i) => (<tr key={i} className="hover:bg-indigo-50/30 transition-colors"><td className="px-6 py-3 text-slate-600 font-medium">{o.start}</td><td className="px-6 py-3 text-slate-400">{o.finish}</td><td className="px-6 py-3 font-bold text-slate-800">{o.supplier}</td><td className="px-6 py-3 font-mono text-indigo-600">{o.item}</td><td className="px-6 py-3 text-right font-black">{formatNum(o.qty)}</td></tr>))}</tbody>
+                  <table className="w-full text-left text-[10px] border-collapse">
+                    <thead className="bg-slate-50 border-b border-slate-200 font-black text-slate-400 uppercase tracking-tighter">
+                      <tr>
+                        <th className="px-6 py-4">Arrival Date</th>
+                        <th className="px-6 py-4">Buyer Code</th>
+                        <th className="px-6 py-4">Supplier</th>
+                        <th className="px-6 py-4">Item ID</th>
+                        <th className="px-6 py-4 text-right">Order Qty</th>
+                        <th className="px-6 py-4 text-right">Rate</th>
+                        <th className="px-6 py-4 text-right">Total Cost</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100 font-mono">
+                      {purchases.map((o, i) => (
+                        <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
+                          <td className="px-6 py-3 text-slate-500">{o.finish}</td>
+                          <td className="px-6 py-3 font-bold text-indigo-600">{o.buyer_code}</td>
+                          <td className="px-6 py-3 font-bold text-slate-800 font-sans">{o.supplier}</td>
+                          <td className="px-6 py-3 font-sans font-bold">{o.item}</td>
+                          <td className="px-6 py-3 text-right font-black text-slate-900">{formatNum(o.qty)}</td>
+                          <td className="px-6 py-3 text-right text-slate-400">₹{formatNum(o.rate)}</td>
+                          <td className="px-6 py-3 text-right font-black text-emerald-600">₹{formatNum(o.total_cost)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
                   </table>
+                </div>
+
+                {/* PROCUREMENT BUDGET SUMMARY FOOTER */}
+                <div className="mt-8 bg-slate-900 text-white p-6 rounded-xl shadow-xl flex justify-between items-center border border-slate-800 animate-in slide-in-from-bottom-2 duration-700">
+                  <div className="flex items-center gap-6">
+                    <div className="p-3 bg-indigo-600/20 rounded-lg text-indigo-400">
+                      <IndianRupee size={24} />
+                    </div>
+                    <div>
+                      <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-500">Procurement Budget Insight</h4>
+                      <div className="flex gap-12 mt-2 tabular-nums">
+                        <div>
+                          <p className="text-2xl font-black text-white">
+                            ₹{formatNum(totalSpend)}
+                          </p>
+                          <p className="text-[9px] font-bold uppercase text-slate-500">Total Planned Spend</p>
+                        </div>
+                        <div>
+                          <p className="text-2xl font-black text-indigo-400">
+                            {formatNum(totalUnitsOrdered)}
+                          </p>
+                          <p className="text-[9px] font-bold uppercase text-slate-500">Total Units Purchased</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right flex flex-col items-end gap-2">
+                    <span className="text-[10px] font-bold px-3 py-1 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full">
+                      OPTIMIZED PROCUREMENT
+                    </span>
+                    <p className="text-[9px] text-slate-500 italic font-sans">Based on Supplier Lot Size Constraints</p>
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
+          {/* TRACE RCA TAB */}
           {result && activeTab === 'rca' && (
-            <div className="grid grid-cols-4 gap-8 h-[600px]">
-              <div className="col-span-1 space-y-2 overflow-auto pr-4 border-r border-slate-200"><h4 className="text-[10px] font-black text-slate-400 uppercase mb-4">Demand Orders</h4>{result.trace?.map(t => (<div key={t.order_id} onClick={() => setSelectedTrace(t)} className={`p-3 rounded border transition-all cursor-pointer ${selectedTrace?.order_id === t.order_id ? 'border-indigo-600 bg-indigo-50' : 'border-slate-200 bg-white'}`}><div className="text-[9px] font-bold text-slate-400">{t.order_id}</div><div className="text-xs font-bold">{t.item}</div></div>))}</div>
+            <div className="grid grid-cols-4 gap-8 h-[600px] animate-in fade-in duration-500">
+              <div className="col-span-1 space-y-2 overflow-auto pr-4 border-r border-slate-200"><h4 className="text-[10px] font-black text-slate-400 uppercase mb-4 tracking-widest">Demand Orders</h4>{result.trace?.map(t => (<div key={t.order_id} onClick={() => setSelectedTrace(t)} className={`p-3 rounded-lg border transition-all cursor-pointer ${selectedTrace?.order_id === t.order_id ? 'border-indigo-600 bg-indigo-50 shadow-sm' : 'border-slate-200 bg-white hover:bg-slate-50'}`}><div className="text-[9px] font-bold text-slate-400">{t.order_id}</div><div className="text-xs font-bold">{t.item}</div></div>))}</div>
               <div className="col-span-3 space-y-6 overflow-auto"><div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm"><h4 className="text-xs font-bold mb-4">Decision Trace for {selectedTrace?.item}</h4>{selectedTrace?.steps?.map((s, i) => (<div key={i} className="mb-4 pl-4 border-l-2 border-indigo-100 flex gap-4 items-start animate-in fade-in duration-300"><span className={`px-2 py-0.5 rounded-[4px] text-[9px] font-black uppercase whitespace-nowrap ${s.action === 'Infeasible' ? 'bg-red-50 text-red-600' : s.action === 'Production' ? 'bg-indigo-50 text-indigo-600' : s.action === 'Purchase' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-600'}`}>{s.action}</span><div><p className="text-xs font-bold text-slate-700">{s.reason || s.msg || 'Resolved'}</p></div></div>))}</div></div>
             </div>
           )}
 
+          {/* EMPTY STATE */}
           {!result && activeTab !== 'data' && activeTab !== 'parameters' && (
              <div className="flex flex-col items-center justify-center h-full text-center">
-                <Database size={48} className="text-slate-200 mb-4" /><h3 className="font-bold text-slate-700">No Data Available</h3><p className="text-xs text-slate-400 mb-6">Please upload and run the solver in the Data Management tab.</p><button onClick={() => setActiveTab('data')} className="bg-indigo-600 text-white px-6 py-2 rounded text-xs font-bold">Go to Data Management</button>
+                <Database size={48} className="text-slate-200 mb-4" /><h3 className="font-bold text-slate-700">No Data Available</h3><p className="text-xs text-slate-400 mb-6">Please upload and run the solver in the Data Management tab.</p><button onClick={() => setActiveTab('data')} className="bg-indigo-600 text-white px-6 py-2 rounded text-xs font-bold shadow-lg shadow-indigo-100">Go to Data Management</button>
              </div>
           )}
         </div>
@@ -463,6 +542,8 @@ export default function App() {
     </div>
   );
 }
+
+// --- SUBCOMPONENTS ---
 
 const NavItem = ({ icon, label, active, onClick, disabled }) => (
   <div 

@@ -33,7 +33,7 @@ def apply_lot_sizing(qty, lot_size, lot_inc):
 
 def run_solver(data, horizon, start_date, is_constrained, build_ahead):
     """
-    Engine to calculate MRP with Supplier Lot Sizing and Increment logic.
+    Engine to calculate MRP with Lot Sizing and Procurement Financial logic.
     """
     is_constrained = str(is_constrained).lower() == 'true'
     build_ahead = str(build_ahead).lower() == 'true'
@@ -42,7 +42,7 @@ def run_solver(data, horizon, start_date, is_constrained, build_ahead):
     def sys_log(msg):
         system_logs.append(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}")
 
-    sys_log(f"Initializing Solver Engine (Lot-Sizing Enabled)")
+    sys_log(f"Initializing Solver Engine (Lot-Sizing & Financial Tracking Enabled)")
     
     # 1. Normalize Data
     items = normalize_df(data.get('items'))
@@ -151,7 +151,7 @@ def run_solver(data, horizon, start_date, is_constrained, build_ahead):
         is_make = 'make' in mb_raw or 'both' in mb_raw
         
         if is_make:
-            # (Production Logic remains the same...)
+            # PRODUCTION LOGIC
             base_sec = 0
             if routing_master is not None:
                 item_routing = routing_master[routing_master['item'] == item_id]
@@ -212,13 +212,12 @@ def run_solver(data, horizon, start_date, is_constrained, build_ahead):
                 steps.append({"action": "Production", "msg": "Scheduled (Unconstrained)", "item": item_id, "qty": round(unmet, 4)})
                 unmet = 0
         else:
-            # BUY LOGIC WITH LOT SIZING
+            # BUY LOGIC WITH LOT SIZING & FINANCIALS
             item_suppliers = supplier_master[supplier_master['itemid'] == item_id] if supplier_master is not None else pd.DataFrame()
             if item_suppliers.empty:
-                # Default logic for items without supplier master
                 lt_days = int(pd.to_numeric(item_row.get('leadtimebuy', 7), errors='coerce'))
                 req_start_str = (datetime.strptime(due_date_str, '%Y-%m-%d') - timedelta(days=lt_days)).strftime('%Y-%m-%d')
-                planned_orders.append({"id": f"PUR-{item_id}-{len(planned_orders)}", "item": item_id, "qty": round(unmet, 4), "type": "Purchase", "start": req_start_str, "finish": due_date_str, "lt_days": lt_days, "supplier": "Unknown"})
+                planned_orders.append({"id": f"PUR-{item_id}-{len(planned_orders)}", "item": item_id, "qty": round(unmet, 4), "type": "Purchase", "start": req_start_str, "finish": due_date_str, "lt_days": lt_days, "supplier": "Unknown", "rate": 0, "total_cost": 0, "buyer_code": "N/A"})
                 if due_date_str in mrp_plan[item_id]: mrp_plan[item_id][due_date_str]['inflow_fresh'] += unmet
                 steps.append({"action": "Purchase", "msg": "Ordered (Default Supplier)", "item": item_id, "qty": round(unmet, 4)})
                 unmet = 0
@@ -228,7 +227,7 @@ def run_solver(data, horizon, start_date, is_constrained, build_ahead):
                 for _, s_row in sorted_sups.iterrows():
                     if unmet <= 0: break
                     
-                    # Check for surplus from previous iterations/suppliers
+                    # Consume surplus stock from lot sizing of previous orders
                     surplus_stock = transient_stock.get(item_id, 0)
                     if surplus_stock > 0:
                         consumed = min(unmet, surplus_stock)
@@ -241,8 +240,12 @@ def run_solver(data, horizon, start_date, is_constrained, build_ahead):
                     s_name = str(s_row.get('suppliername', s_id))
                     share = pd.to_numeric(s_row.get('sharepercent', 1.0), errors='coerce')
                     lt_days = int(pd.to_numeric(s_row.get('leadtimedays', 7), errors='coerce'))
+                    
+                    # New Columns Logic
                     lot_size = pd.to_numeric(s_row.get('supplierlotsize', 0), errors='coerce') or 0
                     lot_inc = pd.to_numeric(s_row.get('supplierlotincrement', 0), errors='coerce') or 0
+                    rate = pd.to_numeric(s_row.get('rateperunit', 0), errors='coerce') or 0
+                    buyer_code = str(s_row.get('buyercode', 'N/A'))
                     
                     cap_key = f"{s_id}_{item_id}"
                     target_for_sup = original_unmet * share
@@ -255,30 +258,28 @@ def run_solver(data, horizon, start_date, is_constrained, build_ahead):
                         if d_str not in transient_supplier_capacity.get(cap_key, {}): continue
                         
                         avail = transient_supplier_capacity[cap_key][d_str]
-                        # Amount needed for this supplier based on share and remaining unmet
                         base_req = min(target_for_sup - sup_allocated, unmet)
                         if base_req <= 0: break
 
-                        # Apply Lot Sizing to the requirement
+                        # Lot Sizing Calculation
                         order_qty = apply_lot_sizing(base_req, lot_size, lot_inc)
-                        
-                        # Cap by available capacity
                         final_qty = min(order_qty, avail)
                         
                         if final_qty > 0:
                             transient_supplier_capacity[cap_key][d_str] -= final_qty
                             
-                            # Calculate how much of the final_qty satisfies the current unmet demand
+                            # Surplus management
                             satisfied_now = min(final_qty, unmet)
-                            # Surplus goes to transient stock for subsequent demands
                             surplus = final_qty - satisfied_now
                             if surplus > 0:
                                 transient_stock[item_id] = transient_stock.get(item_id, 0) + surplus
                             
                             p_start = (datetime.strptime(d_str, '%Y-%m-%d') - timedelta(days=lt_days)).strftime('%Y-%m-%d')
                             planned_orders.append({
-                                "id": f"PUR-{item_id}-{len(planned_orders)}", "item": item_id, "qty": round(final_qty, 4), "type": "Purchase", 
-                                "start": p_start, "finish": d_str, "supplier": s_name, "lt_days": lt_days
+                                "id": f"PUR-{item_id}-{len(planned_orders)}", 
+                                "item": item_id, "qty": round(final_qty, 4), "type": "Purchase", 
+                                "start": p_start, "finish": d_str, "supplier": s_name, "lt_days": lt_days,
+                                "rate": rate, "total_cost": round(final_qty * rate, 2), "buyer_code": buyer_code
                             })
                             if d_str in mrp_plan[item_id]: mrp_plan[item_id][d_str]['inflow_fresh'] += final_qty
                             
@@ -293,7 +294,7 @@ def run_solver(data, horizon, start_date, is_constrained, build_ahead):
                     if due_date_str in mrp_plan[item_id]: mrp_plan[item_id][due_date_str]['shortage'] += unmet
         return unmet
 
-    # 5. Demand Resolution Loop
+    # 5. Demand Loop
     for _, order in sorted_demand.iterrows():
         item_id = str(order['itemid']).strip().upper()
         trace = {"order_id": str(order.get('scheduleno', 'SO')), "item": item_id, "qty": order['demandqty'], "due": str(order['duedate_clean']), "steps": [], "logs": []}
@@ -312,8 +313,6 @@ def run_solver(data, horizon, start_date, is_constrained, build_ahead):
             bucket['ending_stock'] = round(max(0, net), 4)
             if net < 0 and bucket['shortage'] == 0:
                 bucket['shortage'] = round(abs(net), 4)
-            else:
-                bucket['shortage'] = round(bucket['shortage'], 4)
             running_stock = bucket['ending_stock']
 
     return {
