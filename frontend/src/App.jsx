@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import axios from 'axios';
+import denoLogo from './assets/logo_deno.png';
 import * as XLSX from 'xlsx';
 import { 
   LayoutDashboard, Database, Play, Box, Truck, BarChart3, 
@@ -194,14 +195,14 @@ export default function App() {
     <div className="flex h-screen bg-[#F8FAFC] text-slate-900 font-sans overflow-hidden">
       <aside className="w-64 bg-[#0F172A] text-white flex flex-col shadow-2xl">
         <div className="p-6 border-b border-slate-700 bg-[#1E293B] flex items-center gap-3">
-          <div className="w-8 h-8 bg-indigo-500 rounded flex items-center justify-center overflow-hidden">
+        {/* <div className="w-8 h-8 bg-indigo-500 rounded flex items-center justify-center overflow-hidden"> */}
           <img
-            src="/assets/logo_deno.png"
+            src={denoLogo} // Use the imported variable here
             alt="icon"
-            className="w-5 h-5 object-cover"
+            className="w-10 h-10 object-cover"
           />
-        </div>
-          <span className="font-bold text-sm tracking-widest uppercase">Deno</span>
+        {/* </div> */}
+          {/* <span className="font-bold text-sm tracking-widest uppercase">Deno</span> */}
         </div>
         <nav className="flex-1 p-4 space-y-1 mt-4 overflow-y-auto">
           <NavItem icon={<Database size={18}/>} label="Data Management" active={activeTab === 'data'} onClick={() => setActiveTab('data')} />
