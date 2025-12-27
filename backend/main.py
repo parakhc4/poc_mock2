@@ -27,9 +27,7 @@ async def solve(
     files: list[UploadFile] = File(...)
 ):
     try:
-        # 1. Initialize data dictionary
         data = {k: None for k in ['demand', 'items', 'bom', 'routing', 'resource_routing', 'supplies', 'supplier_master']}
-        
         mapping = {
             'demand': ['demand', 'sales'], 
             'bom': ['bom', 'bill', 'structure'], 
@@ -43,7 +41,6 @@ async def solve(
         for file in files:
             contents = await file.read()
             filename = file.filename.lower()
-
             if filename.endswith(('.xlsx', '.xls')):
                 xls = pd.read_excel(io.BytesIO(contents), sheet_name=None)
                 for sheet_name, df in xls.items():
@@ -55,7 +52,6 @@ async def solve(
                             break
                     if matched_key:
                         data[matched_key] = df.dropna(how='all').reset_index(drop=True)
-
             else:
                 clean_filename = filename.replace(" ", "").replace("_", "").replace("-", "")
                 for key, patterns in mapping.items():
@@ -64,20 +60,14 @@ async def solve(
                         data[key] = df.dropna(how='all')
                         break
 
-        # 2. Date Setup
         sim_start = pd.to_datetime(start_date).date() if start_date else datetime(2025, 12, 1).date()
-
-        # 3. Run Solver
         results = run_solver(data, horizon, sim_start, is_constrained, build_ahead)
         
-        # 4. JSON Compliance: Replace NaN with None (null in JSON)
-        # We attach raw_data so the Network Graph can map items NOT in the demand list
         results["raw_data"] = {
             "bom": data['bom'].replace({np.nan: None}).to_dict('records') if data['bom'] is not None else [],
             "supplier_master": data['supplier_master'].replace({np.nan: None}).to_dict('records') if data['supplier_master'] is not None else [],
             "items": data['items'].replace({np.nan: None}).to_dict('records') if data['items'] is not None else []
         }
-        
         return results
 
     except Exception as e:

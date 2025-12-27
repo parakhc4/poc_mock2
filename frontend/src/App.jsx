@@ -11,15 +11,27 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGri
 import { ReactFlow, Background, Controls, MarkerType, Handle, Position } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 
+// --- HELPERS ---
+/**
+ * Formats numbers to handle trailing decimals and floating point precision.
+ * Shows up to 2 decimal places and uses locale-specific formatting.
+ */
+const formatNum = (val) => {
+  if (val === undefined || val === null || val === '-') return '-';
+  const n = Number(val);
+  if (isNaN(n)) return '-';
+  // Treat values effectively zero (from precision errors) as '-' or '0'
+  if (Math.abs(n) < 0.00001) return '-';
+  return n.toLocaleString(undefined, { 
+    minimumFractionDigits: 0, 
+    maximumFractionDigits: 2 
+  });
+};
+
 // --- CUSTOM GRAPH NODES WITH HANDLES ---
 
-/**
- * Material Node: Triangle shape
- * Used for Items (FG, SFG, RM) and terminal Supplier nodes.
- */
 const MaterialNode = ({ data }) => (
   <div className="flex flex-col items-center group relative p-4">
-    {/* Target handle receives flow from the left */}
     <Handle type="target" position={Position.Left} className="w-2 h-2 !bg-indigo-400 border-none" />
     <div className="w-0 h-0 border-l-[30px] border-l-transparent border-r-[30px] border-r-transparent border-b-[50px] border-b-indigo-600 drop-shadow-md transition-transform group-hover:scale-110 relative">
        <span className="absolute top-6 left-1/2 -translate-x-1/2 text-[7px] font-black text-white uppercase tracking-tighter">
@@ -29,15 +41,10 @@ const MaterialNode = ({ data }) => (
     <div className="mt-2 text-[10px] font-bold bg-white px-3 py-1 rounded-full shadow-sm border border-slate-200 whitespace-nowrap">
       {data.label}
     </div>
-    {/* Source handle sends flow to the right */}
     <Handle type="source" position={Position.Right} className="w-2 h-2 !bg-indigo-400 border-none" />
   </div>
 );
 
-/**
- * Activity Node: Circle shape
- * Used for BOM (displays BOM ID) and Suppliers (displays Supplier Name).
- */
 const ActivityNode = ({ data }) => (
   <div className="flex flex-col items-center group relative p-4">
     <Handle type="target" position={Position.Left} className="w-2 h-2 !bg-amber-400 border-none" />
@@ -60,11 +67,9 @@ export default function App() {
   const [selectedItem, setSelectedItem] = useState('');
   const [selectedTrace, setSelectedTrace] = useState(null);
   
-  // --- PARAMETERS STATE ---
   const [isConstrained, setIsConstrained] = useState(true);
   const [buildAhead, setBuildAhead] = useState(true);
 
-  // --- MRP EXPANSION STATES ---
   const [expandInflow, setExpandInflow] = useState(false);
   const [expandOutflow, setExpandOutflow] = useState(false);
 
@@ -81,7 +86,6 @@ export default function App() {
       const response = await axios.post('http://localhost:8000/solve', formData);
       setResult(response.data);
       
-      // Default selection logic: Pick the first item from master data list
       if (response.data.raw_data?.items?.length > 0) {
         setSelectedItem(response.data.raw_data.items[0].ItemID);
       }
@@ -93,7 +97,6 @@ export default function App() {
     }
   };
 
-  // --- NETWORK GRAPH LOGIC ---
   const { nodes, edges } = useMemo(() => {
     if (!result?.raw_data || !selectedItem) return { nodes: [], edges: [] };
 
@@ -110,7 +113,6 @@ export default function App() {
       const itemInfo = items?.find(i => i.ItemID === itemId);
       const typeLabel = itemInfo?.Type || (itemId.startsWith('RM') ? 'RM' : 'WIP');
 
-      // 1. Add Material Triangle
       newNodes.push({
         id: itemId,
         type: 'material',
@@ -118,7 +120,6 @@ export default function App() {
         position: { x, y },
       });
 
-      // 2. Trace BOM (Components)
       const components = bom?.filter(b => b.ParentID === itemId) || [];
       components.forEach((comp, idx) => {
         const activityId = `act_bom_${itemId}_${comp.ChildID}_${comp.BOMId}`;
@@ -126,7 +127,6 @@ export default function App() {
         const childX = x - 500;
         const childY = y + verticalOffset;
 
-        // BOM Activity Circle (Shows BOM ID)
         newNodes.push({
           id: activityId,
           type: 'activity',
@@ -134,7 +134,6 @@ export default function App() {
           position: { x: x - 250, y: childY },
         });
 
-        // Visible Arrows
         newEdges.push({ 
           id: `e-${comp.ChildID}-${activityId}`, 
           source: comp.ChildID, 
@@ -153,7 +152,6 @@ export default function App() {
         traceUpstream(comp.ChildID, childX, childY, level + 1);
       });
 
-      // 3. Trace Suppliers
       const suppliers = supplier_master?.filter(s => s.ItemID === itemId) || [];
       suppliers.forEach((sup, idx) => {
         const activityId = `act_sup_${itemId}_${sup.SupplierID}`;
@@ -163,7 +161,6 @@ export default function App() {
         const supX = x - 500;
         const supY = y + verticalOffset;
 
-        // Supplier Activity Circle (Shows Supplier Name)
         newNodes.push({
           id: activityId,
           type: 'activity',
@@ -171,7 +168,6 @@ export default function App() {
           position: { x: x - 250, y: supY },
         });
 
-        // Terminal Triangle: Material at Supplier
         newNodes.push({
             id: sourceMaterialId,
             type: 'material',
@@ -179,7 +175,6 @@ export default function App() {
             position: { x: supX, y: supY },
         });
 
-        // Visible Arrows (Dashed for Supply)
         newEdges.push({ 
           id: `e-${sourceMaterialId}-${activityId}`, 
           source: sourceMaterialId, 
@@ -214,7 +209,6 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-[#F8FAFC] text-slate-900 font-sans overflow-hidden">
-      {/* SIDEBAR */}
       <aside className="w-64 bg-[#0F172A] text-white flex flex-col shadow-2xl">
         <div className="p-6 border-b border-slate-700 bg-[#1E293B]">
           <div className="flex items-center gap-3">
@@ -253,7 +247,6 @@ export default function App() {
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm z-10">
           <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Workspace / {activeTab}</h2>
@@ -288,7 +281,6 @@ export default function App() {
           ) : (
             <div className="h-[calc(100%-1rem)] animate-in fade-in slide-in-from-bottom-2 duration-500">
               
-              {/* TAB: EXECUTIVE SUMMARY */}
               {activeTab === 'executive' && (
                 <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm h-[450px]">
                   <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-8">Supply Inflow Horizon</h3>
@@ -305,7 +297,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* TAB: NETWORK GRAPH - Updated to show all items */}
               {activeTab === 'network' && (
                 <div className="flex flex-col h-full space-y-4">
                   <div className="flex justify-between items-center">
@@ -314,7 +305,6 @@ export default function App() {
                       onChange={(e) => setSelectedItem(e.target.value)} 
                       className="bg-white border border-slate-200 rounded px-4 py-2 text-xs font-bold outline-none shadow-sm min-w-[300px]"
                     >
-                      {/* Mapping through raw_data.items ensures items without demand are shown */}
                       {result.raw_data.items.map(item => <option key={item.ItemID} value={item.ItemID}>{item.ItemID}</option>)}
                     </select>
                     <div className="flex gap-4">
@@ -343,7 +333,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* TAB: PRODUCTION PLAN */}
               {activeTab === 'plan' && (
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
                   <table className="w-full text-left text-xs">
@@ -363,7 +352,7 @@ export default function App() {
                           <td className="px-6 py-3 font-mono text-indigo-600">{o.id}</td>
                           <td className="px-6 py-3 font-bold">{o.item}</td>
                           <td className="px-6 py-3 text-slate-500 font-medium">{o.res || 'Internal'}</td>
-                          <td className="px-6 py-3 text-right">{o.qty}</td>
+                          <td className="px-6 py-3 text-right">{formatNum(o.qty)}</td>
                           <td className="px-6 py-3 text-slate-400">{o.start}</td>
                           <td className="px-6 py-3 text-slate-400">{o.finish}</td>
                         </tr>
@@ -373,7 +362,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* TAB: MRP INVENTORY PLAN */}
               {activeTab === 'mrp' && (
                 <div className="space-y-6">
                   <select value={selectedItem} onChange={(e) => setSelectedItem(e.target.value)} className="bg-white border border-slate-200 rounded px-4 py-2 text-xs font-bold outline-none shadow-sm min-w-[300px]">
@@ -392,7 +380,7 @@ export default function App() {
                         <tr className="bg-slate-50/50">
                            <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-slate-600">Starting Stock</td>
                            {Object.values(result.mrp[selectedItem]).map((b, i) => (
-                             <td key={i} className="px-4 py-2 text-right text-slate-500">{(b.starting_stock || 0) + (b.inflow_onhand || 0)}</td>
+                             <td key={i} className="px-4 py-2 text-right text-slate-500">{formatNum((b.starting_stock || 0) + (b.inflow_onhand || 0))}</td>
                            ))}
                         </tr>
                         <tr onClick={() => setExpandInflow(!expandInflow)} className="cursor-pointer hover:bg-slate-50">
@@ -401,15 +389,15 @@ export default function App() {
                            </td>
                            {Object.values(result.mrp[selectedItem]).map((b, i) => (
                              <td key={i} className="px-4 py-2 text-right font-bold text-indigo-600">
-                               {(b.inflow_wip || 0) + (b.inflow_supplier || 0) + (b.inflow_fresh || 0)}
+                               {formatNum((b.inflow_wip || 0) + (b.inflow_supplier || 0) + (b.inflow_fresh || 0))}
                              </td>
                            ))}
                         </tr>
                         {expandInflow && (
                            <>
-                              <tr className="bg-indigo-50/30"><td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ WIP</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{b.inflow_wip || '-'}</td>)}</tr>
-                              <tr className="bg-indigo-50/30"><td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Supplier Stock</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{b.inflow_supplier || '-'}</td>)}</tr>
-                              <tr className="bg-indigo-50/30"><td className="px-4 py-1 text-indigo-500 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Fresh Plan</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-indigo-500 font-bold">{b.inflow_fresh || '-'}</td>)}</tr>
+                              <tr className="bg-indigo-50/30"><td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ WIP</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.inflow_wip)}</td>)}</tr>
+                              <tr className="bg-indigo-50/30"><td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Supplier Stock</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.inflow_supplier)}</td>)}</tr>
+                              <tr className="bg-indigo-50/30"><td className="px-4 py-1 text-indigo-500 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Fresh Plan</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-indigo-500 font-bold">{formatNum(b.inflow_fresh)}</td>)}</tr>
                            </>
                         )}
                         <tr onClick={() => setExpandOutflow(!expandOutflow)} className="cursor-pointer hover:bg-slate-50">
@@ -418,17 +406,17 @@ export default function App() {
                            </td>
                            {Object.values(result.mrp[selectedItem]).map((b, i) => (
                              <td key={i} className="px-4 py-2 text-right font-bold text-amber-600">
-                               {(b.outflow_direct || 0) + (b.outflow_dep || 0)}
+                               {formatNum((b.outflow_direct || 0) + (b.outflow_dep || 0))}
                              </td>
                            ))}
                         </tr>
                         <tr className="bg-slate-100/50 border-t border-slate-200">
                            <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-slate-800">Ending Stock</td>
-                           {Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className="px-4 py-2 text-right font-bold text-slate-800">{bucket.ending_stock}</td>)}
+                           {Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className="px-4 py-2 text-right font-bold text-slate-800">{formatNum(bucket.ending_stock)}</td>)}
                         </tr>
                          <tr>
                            <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-red-500">Shortage</td>
-                           {Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className={`px-4 py-2 text-right font-bold ${bucket.shortage > 0 ? 'text-red-500 bg-red-50' : 'text-slate-200'}`}>{bucket.shortage > 0 ? bucket.shortage : '-'}</td>)}
+                           {Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className={`px-4 py-2 text-right font-bold ${bucket.shortage > 0 ? 'text-red-500 bg-red-50' : 'text-slate-200'}`}>{bucket.shortage > 0 ? formatNum(bucket.shortage) : '-'}</td>)}
                         </tr>
                       </tbody>
                     </table>
@@ -436,7 +424,6 @@ export default function App() {
                 </div>
               )}
 
-              {/* TAB: TRACE RCA */}
               {activeTab === 'rca' && (
                 <div className="grid grid-cols-4 gap-8 h-[600px]">
                   <div className="col-span-1 space-y-2 overflow-auto pr-4 border-r border-slate-200">
