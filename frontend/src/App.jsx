@@ -209,6 +209,7 @@ export default function App() {
   return (
     <div className="flex h-screen bg-[#F8FAFC] text-slate-900 font-sans overflow-hidden" style={{ fontFamily: "'Inter', sans-serif" }}>
       {/* SIDEBAR */}
+      
       <aside className="w-64 bg-[#0F172A] text-white flex flex-col shadow-2xl">
         <div className="p-6 border-b border-slate-700 bg-[#1E293B] flex items-center gap-3">
           <img src={denoLogo} alt="icon" className="w-10 h-10 object-cover" />
@@ -227,7 +228,16 @@ export default function App() {
           <NavItem icon={<Truck size={18}/>} label="Production Plan" active={activeTab === 'plan'} onClick={() => setActiveTab('plan')} disabled={!result} />
           <NavItem icon={<Search size={18}/>} label="Trace RCA" active={activeTab === 'rca'} onClick={() => setActiveTab('rca')} disabled={!result} />
         </nav>
+
+        <div className="p-4 border-t border-slate-800/50">
+          <p className="text-[8px] text-slate-500 font-medium text-left opacity-70 uppercase tracking-widest">
+            APSCore™<br></br>powered by Upstrail Technologies 2025
+          </p>
+        </div>
+
+
       </aside>
+      
 
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* TOP HEADER */}
