@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Database, Play, Box, Truck, BarChart3, 
   UploadCloud, FileText, Loader2, Search, ClipboardList, AlertCircle,
   Settings, ChevronRight, ChevronDown, Share2, Download, Trash2, CheckCircle2, Factory,
-  TrendingUp, AlertTriangle, Target, Activity, Calendar
+  TrendingUp, AlertTriangle, Target, Activity, Calendar, Sliders
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, 
@@ -123,7 +123,6 @@ export default function App() {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
     formData.append('horizon', 30);
-    // Passing the dynamic startDate from state
     formData.append('start_date', startDate); 
     formData.append('is_constrained', isConstrained);
     formData.append('build_ahead', buildAhead);
@@ -200,48 +199,15 @@ export default function App() {
           {/* <div className="w-8 h-8 bg-indigo-500 rounded flex items-center justify-center overflow-hidden"> */}
             <img src={denoLogo} alt="icon" className="w-10 h-10 object-cover" />
           {/* </div> */}
-          <span className="font-bold text-sm tracking-widest uppercase">Deno</span>
-        </div>
-
-        {/* --- MOVED SOLVER PARAMETERS SECTION --- */}
-        <div className="p-6 bg-[#1E293B] border-b border-slate-700">
-          <div className="flex items-center gap-2 mb-6 text-indigo-400">
-            <Settings size={16} />
-            <span className="text-[11px] font-black uppercase tracking-widest">Solver Parameters</span>
-          </div>
-          <div className="space-y-5">
-            {/* Start Date Selector */}
-            <div className="space-y-2">
-               <label className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1.5">
-                 <Calendar size={10}/> Planning Start Date
-               </label>
-               <input 
-                 type="date" 
-                 value={startDate}
-                 onChange={(e) => setStartDate(e.target.value)}
-                 className="w-full bg-[#0F172A] border border-slate-600 rounded px-3 py-1.5 text-xs text-slate-200 focus:border-indigo-500 outline-none transition-colors"
-               />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-300">Constrained</span>
-              <button onClick={() => setIsConstrained(!isConstrained)} className={`w-8 h-4 rounded-full relative transition-colors ${isConstrained ? 'bg-indigo-500' : 'bg-slate-600'}`}>
-                <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${isConstrained ? 'translate-x-4' : 'translate-x-0'}`} />
-              </button>
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-slate-300">Build Ahead</span>
-              <button onClick={() => setBuildAhead(!buildAhead)} className={`w-8 h-4 rounded-full relative transition-colors ${buildAhead ? 'bg-indigo-500' : 'bg-slate-600'}`}>
-                <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${buildAhead ? 'translate-x-4' : 'translate-x-0'}`} />
-              </button>
-            </div>
-          </div>
+          <span className="font-bold text-sm tracking-widest uppercase">APS</span>
         </div>
         
-        {/* Navigation Tabs */}
-        <nav className="flex-1 p-4 space-y-1 mt-2 overflow-y-auto">
+        <nav className="flex-1 p-4 space-y-1 mt-4 overflow-y-auto">
           <NavItem icon={<Database size={18}/>} label="Data Management" active={activeTab === 'data'} onClick={() => setActiveTab('data')} />
+          <NavItem icon={<Settings size={18}/>} label="Parameters" active={activeTab === 'parameters'} onClick={() => setActiveTab('parameters')} />
+          
+          <div className="my-4 border-t border-slate-800" />
+          
           <NavItem icon={<LayoutDashboard size={18}/>} label="Executive Summary" active={activeTab === 'executive'} onClick={() => setActiveTab('executive')} disabled={!result} />
           <NavItem icon={<ClipboardList size={18}/>} label="MRP Inventory Plan" active={activeTab === 'mrp'} onClick={() => setActiveTab('mrp')} disabled={!result} />
           <NavItem icon={<Share2 size={18}/>} label="Network Graph" active={activeTab === 'network'} onClick={() => setActiveTab('network')} disabled={!result} />
@@ -281,6 +247,72 @@ export default function App() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {activeTab === 'parameters' && (
+            <div className="max-w-xl mx-auto space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <div className="mb-8">
+                <h3 className="text-lg font-bold text-slate-800">Solver Configuration</h3>
+                <p className="text-xs text-slate-500 mt-1">Adjust constraints and planning dates before running the engine.</p>
+              </div>
+
+              <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm space-y-8">
+                {/* Date Picker */}
+                <div className="space-y-3">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+                    <Calendar size={14} className="text-indigo-600"/> Planning Start Date
+                  </label>
+                  <input 
+                    type="date" 
+                    value={startDate}
+                    onChange={(e) => setStartDate(e.target.value)}
+                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-4 py-3 text-sm font-bold text-slate-700 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 outline-none transition-all"
+                  />
+                  <p className="text-[9px] text-slate-400">The engine will calculate inventory and demand starting from this date.</p>
+                </div>
+
+                <div className="space-y-4 border-t border-slate-100 pt-8">
+                  {/* Capacity Toggle */}
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-indigo-100 text-indigo-600 rounded-lg flex items-center justify-center">
+                        <Activity size={20}/>
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">Capacity Constrained</p>
+                        <p className="text-[9px] text-slate-400">Limit production based on resource hours.</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setIsConstrained(!isConstrained)} className={`w-10 h-5 rounded-full relative transition-colors ${isConstrained ? 'bg-indigo-600' : 'bg-slate-300'}`}>
+                      <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${isConstrained ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+
+                  {/* Build Ahead Toggle */}
+                  <div className="flex items-center justify-between p-4 bg-slate-50 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-amber-100 text-amber-600 rounded-lg flex items-center justify-center">
+                        <TrendingUp size={20}/>
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">Build Ahead Logic</p>
+                        <p className="text-[9px] text-slate-400">Allow early production to meet future peaks.</p>
+                      </div>
+                    </div>
+                    <button onClick={() => setBuildAhead(!buildAhead)} className={`w-10 h-5 rounded-full relative transition-colors ${buildAhead ? 'bg-indigo-600' : 'bg-slate-300'}`}>
+                      <div className={`absolute top-1 left-1 w-3 h-3 bg-white rounded-full transition-transform ${buildAhead ? 'translate-x-5' : 'translate-x-0'}`} />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-6 flex gap-4">
+                <AlertCircle className="text-indigo-600 shrink-0" size={20}/>
+                <p className="text-[10px] text-indigo-800 leading-relaxed font-medium">
+                  <strong>Pro Tip:</strong> Turning off Capacity Constraints will show you the "Infinite Plan" – essentially how much capacity you <em>would</em> need to meet all demand on time.
+                </p>
+              </div>
             </div>
           )}
 
@@ -416,7 +448,7 @@ export default function App() {
             </div>
           )}
 
-          {!result && activeTab !== 'data' && (
+          {!result && activeTab !== 'data' && activeTab !== 'parameters' && (
              <div className="flex flex-col items-center justify-center h-full text-center">
                 <Database size={48} className="text-slate-200 mb-4" /><h3 className="font-bold text-slate-700">No Data Available</h3><p className="text-xs text-slate-400 mb-6">Please upload and run the solver in the Data Management tab.</p><button onClick={() => setActiveTab('data')} className="bg-indigo-600 text-white px-6 py-2 rounded text-xs font-bold">Go to Data Management</button>
              </div>
