@@ -219,9 +219,14 @@ export default function App() {
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm z-10">
           <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Workspace / {activeTab}</h2>
-          <button onClick={handleSolve} disabled={loading || files.length === 0} className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-1.5 rounded text-xs font-bold transition-all disabled:opacity-30 shadow-lg shadow-indigo-100">
-            {loading ? <Loader2 className="animate-spin" size={14}/> : <Play size={14}/>} {loading ? "PROCESSING..." : "RUN SOLVER"}
-          </button>
+<button 
+  onClick={handleSolve} 
+  disabled={loading || files.length === 0} 
+  className="relative flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white px-5 py-2 rounded-lg text-xs font-bold transition-all disabled:opacity-30 shadow-[0_4px_12px_rgba(99,102,241,0.25)] active:scale-95"
+>
+  {loading ? <Loader2 className="animate-spin" size={14}/> : <Play size={14} fill="currentColor"/>} 
+  {loading ? "ANALYZING CONSTRAINTS..." : "RUN OPTIMIZATION"}
+</button>
         </header>
 
         <div className="flex-1 overflow-auto p-8">
@@ -460,12 +465,36 @@ export default function App() {
 }
 
 const NavItem = ({ icon, label, active, onClick, disabled }) => (
-  <div onClick={!disabled ? onClick : undefined} className={`flex items-center gap-3 px-4 py-2.5 rounded cursor-pointer transition-all ${disabled ? 'opacity-30 cursor-not-allowed' : (active ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400 hover:bg-slate-800')}`}>{icon} <span className="text-xs font-bold uppercase tracking-tight">{label}</span></div>
+  <div 
+    onClick={!disabled ? onClick : undefined} 
+    className={`flex items-center gap-3 px-4 py-2.5 rounded-lg cursor-pointer transition-all duration-200 group
+      ${disabled ? 'opacity-30 cursor-not-allowed' : 
+      (active 
+        ? 'bg-indigo-600/10 text-indigo-400 border-l-4 border-indigo-600 rounded-l-none' 
+        : 'text-slate-400 hover:bg-slate-800/50 hover:text-white')}`}
+  >
+    <span className={`${active ? 'text-indigo-500' : 'group-hover:text-indigo-400'}`}>{icon}</span>
+    <span className="text-[11px] font-semibold uppercase tracking-wider">{label}</span>
+  </div>
 );
 
 const KPICard = ({ label, value, icon, trend }) => (
-  <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm transition-all hover:border-indigo-200">
-    <div className="flex justify-between items-start mb-3"><div className="p-2 bg-slate-50 rounded shadow-inner">{icon}</div>{trend && <span className={`text-[9px] font-black px-1.5 py-0.5 rounded ${trend === 'Healthy' ? 'bg-green-50 text-green-600' : 'bg-amber-50 text-amber-600'}`}>{trend}</span>}</div>
-    <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">{label}</p><h4 className="text-xl font-black text-slate-800 tabular-nums">{value}</h4>
+  <div className="bg-white p-6 rounded-xl border border-slate-200/60 shadow-sm hover:shadow-md hover:border-indigo-200/50 transition-all duration-300">
+    <div className="flex justify-between items-start mb-4">
+      <div className="p-2.5 bg-slate-50 rounded-lg text-slate-600 border border-slate-100">
+        {icon}
+      </div>
+      {trend && (
+        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+          trend === 'Healthy' 
+            ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+            : 'bg-amber-50 text-amber-700 border-amber-100'
+        }`}>
+          {trend}
+        </span>
+      )}
+    </div>
+    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.1em]">{label}</p>
+    <h4 className="text-2xl font-extrabold text-slate-800 tracking-tight tabular-nums">{value}</h4>
   </div>
 );
