@@ -4,7 +4,7 @@ import * as XLSX from 'xlsx';
 import { 
   LayoutDashboard, Database, Play, Box, Truck, BarChart3, 
   UploadCloud, FileText, Loader2, Search, ClipboardList, AlertCircle,
-  Settings, ChevronRight, ChevronDown, Share2, Download, Trash2, CheckCircle2
+  Settings, ChevronRight, ChevronDown, Share2, Download, Trash2, CheckCircle2, Factory
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
@@ -94,6 +94,9 @@ export default function App() {
     }
   };
 
+  /**
+   * Generates and downloads an Excel file (.xlsx) for the global purchase plan.
+   */
   const handleExportPurchases = () => {
     if (!result?.planned_orders) return;
     const purchases = result.planned_orders.filter(o => o.type === 'Purchase');
@@ -109,6 +112,26 @@ export default function App() {
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, "Purchase Plan");
     XLSX.writeFile(workbook, `global_purchase_plan_${new Date().toISOString().split('T')[0]}.xlsx`);
+  };
+
+  /**
+   * Generates and downloads an Excel file (.xlsx) for the production plan.
+   */
+  const handleExportProduction = () => {
+    if (!result?.planned_orders) return;
+    const production = result.planned_orders.filter(o => o.type === 'Production');
+    const data = production.map(o => ({
+      "Order ID": o.id,
+      "Item": o.item,
+      "Resource": o.res || 'Internal',
+      "Qty": o.qty,
+      "Start Date": o.start,
+      "Finish Date": o.finish
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Production Plan");
+    XLSX.writeFile(workbook, `production_plan_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const { nodes, edges } = useMemo(() => {
@@ -166,6 +189,7 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-[#F8FAFC] text-slate-900 font-sans overflow-hidden">
+      {/* SIDEBAR */}
       <aside className="w-64 bg-[#0F172A] text-white flex flex-col shadow-2xl">
         <div className="p-6 border-b border-slate-700 bg-[#1E293B]">
           <div className="flex items-center gap-3">
@@ -205,6 +229,7 @@ export default function App() {
         </div>
       </aside>
 
+      {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm z-10">
           <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Workspace / {activeTab}</h2>
@@ -308,32 +333,47 @@ export default function App() {
             </div>
           )}
 
+          {/* TAB: PRODUCTION PLAN */}
           {result && activeTab === 'plan' && (
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50 border-b border-slate-200 font-black text-slate-400 uppercase tracking-tighter">
-                  <tr>
-                    <th className="px-6 py-4">Order ID</th>
-                    <th className="px-6 py-4">Item</th>
-                    <th className="px-6 py-4">Supplier/Resource</th>
-                    <th className="px-6 py-4 text-right">Qty</th>
-                    <th className="px-6 py-4">Start</th>
-                    <th className="px-6 py-4">Finish</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {result.planned_orders?.filter(o => o.type === 'Production').map((o, i) => (
-                    <tr key={i} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-6 py-3 font-mono text-indigo-600">{o.id}</td>
-                      <td className="px-6 py-3 font-bold">{o.item}</td>
-                      <td className="px-6 py-3 text-slate-500 font-medium">{o.res || 'Internal'}</td>
-                      <td className="px-6 py-3 text-right">{formatNum(o.qty)}</td>
-                      <td className="px-6 py-3 text-slate-400">{o.start}</td>
-                      <td className="px-6 py-3 text-slate-400">{o.finish}</td>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Factory size={16} className="text-indigo-600"/>
+                  <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Global Production Plan</h3>
+                </div>
+                <button 
+                  onClick={handleExportProduction}
+                  className="flex items-center gap-2 bg-slate-800 hover:bg-black text-white px-3 py-1.5 rounded text-[10px] font-bold transition-all shadow-md"
+                >
+                  <Download size={12}/> EXPORT EXCEL
+                </button>
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                <table className="w-full text-left text-xs">
+                  <thead className="bg-slate-50 border-b border-slate-200 font-black text-slate-400 uppercase tracking-tighter">
+                    <tr>
+                      <th className="px-6 py-4">Order ID</th>
+                      <th className="px-6 py-4">Item</th>
+                      <th className="px-6 py-4">Supplier/Resource</th>
+                      <th className="px-6 py-4 text-right">Qty</th>
+                      <th className="px-6 py-4">Start</th>
+                      <th className="px-6 py-4">Finish</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {result.planned_orders?.filter(o => o.type === 'Production').map((o, i) => (
+                      <tr key={i} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-6 py-3 font-mono text-indigo-600">{o.id}</td>
+                        <td className="px-6 py-3 font-bold">{o.item}</td>
+                        <td className="px-6 py-3 text-slate-500 font-medium">{o.res || 'Internal'}</td>
+                        <td className="px-6 py-3 text-right">{formatNum(o.qty)}</td>
+                        <td className="px-6 py-3 text-slate-400">{o.start}</td>
+                        <td className="px-6 py-3 text-slate-400">{o.finish}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -399,6 +439,7 @@ export default function App() {
                 </div>
               </div>
 
+              {/* GLOBAL PURCHASE PLAN SECTION */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2"><Truck size={16} className="text-indigo-600"/><h3 className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Global Purchase Plan</h3></div>
@@ -426,6 +467,7 @@ export default function App() {
             </div>
           )}
 
+          {/* TAB: TRACE RCA */}
           {result && activeTab === 'rca' && (
             <div className="grid grid-cols-4 gap-8 h-[600px]">
               <div className="col-span-1 space-y-2 overflow-auto pr-4 border-r border-slate-200">
