@@ -1,9 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import axios from 'axios';
+import * as XLSX from 'xlsx'; // Import the xlsx library
 import { 
   LayoutDashboard, Database, Play, Box, Truck, BarChart3, 
   UploadCloud, FileText, Loader2, Search, ClipboardList, AlertCircle,
-  Settings, ChevronRight, ChevronDown, Share2
+  Settings, ChevronRight, ChevronDown, Share2, Download
 } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
 
@@ -12,15 +13,10 @@ import { ReactFlow, Background, Controls, MarkerType, Handle, Position } from '@
 import '@xyflow/react/dist/style.css';
 
 // --- HELPERS ---
-/**
- * Formats numbers to handle trailing decimals and floating point precision.
- * Shows up to 2 decimal places and uses locale-specific formatting.
- */
 const formatNum = (val) => {
   if (val === undefined || val === null || val === '-') return '-';
   const n = Number(val);
   if (isNaN(n)) return '-';
-  // Treat values effectively zero (from precision errors) as '-' or '0'
   if (Math.abs(n) < 0.00001) return '-';
   return n.toLocaleString(undefined, { 
     minimumFractionDigits: 0, 
@@ -95,6 +91,32 @@ export default function App() {
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Generates and downloads an Excel file (.xlsx) for the global purchase plan.
+   */
+  const handleExportPurchases = () => {
+    if (!result?.planned_orders) return;
+    
+    // Filter and map data to clean objects for Excel
+    const purchases = result.planned_orders.filter(o => o.type === 'Purchase');
+    const data = purchases.map(o => ({
+      "Order ID": o.id,
+      "Purchase Date": o.start,
+      "Arrival Date": o.finish,
+      "Supplier": o.supplier,
+      "Item": o.item,
+      "Qty": o.qty
+    }));
+
+    // Create a worksheet and workbook
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Purchase Plan");
+
+    // Export the file
+    XLSX.writeFile(workbook, `global_purchase_plan_${new Date().toISOString().split('T')[0]}.xlsx`);
   };
 
   const { nodes, edges } = useMemo(() => {
@@ -363,63 +385,113 @@ export default function App() {
               )}
 
               {activeTab === 'mrp' && (
-                <div className="space-y-6">
-                  <select value={selectedItem} onChange={(e) => setSelectedItem(e.target.value)} className="bg-white border border-slate-200 rounded px-4 py-2 text-xs font-bold outline-none shadow-sm min-w-[300px]">
-                    {Object.keys(result.mrp).map(id => <option key={id} value={id}>{id}</option>)}
-                  </select>
-                  
-                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
-                    <table className="w-full text-left text-[10px] border-collapse">
-                      <thead className="bg-slate-50 border-b border-slate-200">
-                        <tr>
-                          <th className="px-4 py-3 sticky left-0 bg-slate-50 z-20 border-r border-slate-200 min-w-[150px]">Bucket</th>
-                          {Object.keys(result.mrp[selectedItem]).map(d => <th key={d} className="px-4 py-3 min-w-[100px] text-slate-400 font-medium">{d}</th>)}
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        <tr className="bg-slate-50/50">
-                           <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-slate-600">Starting Stock</td>
-                           {Object.values(result.mrp[selectedItem]).map((b, i) => (
-                             <td key={i} className="px-4 py-2 text-right text-slate-500">{formatNum((b.starting_stock || 0) + (b.inflow_onhand || 0))}</td>
-                           ))}
-                        </tr>
-                        <tr onClick={() => setExpandInflow(!expandInflow)} className="cursor-pointer hover:bg-slate-50">
-                           <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-indigo-600 flex items-center gap-2">
-                             {expandInflow ? <ChevronDown size={10}/> : <ChevronRight size={10}/>} Inflow
-                           </td>
-                           {Object.values(result.mrp[selectedItem]).map((b, i) => (
-                             <td key={i} className="px-4 py-2 text-right font-bold text-indigo-600">
-                               {formatNum((b.inflow_wip || 0) + (b.inflow_supplier || 0) + (b.inflow_fresh || 0))}
+                <div className="space-y-12 pb-20">
+                  <div className="space-y-6">
+                    <select value={selectedItem} onChange={(e) => setSelectedItem(e.target.value)} className="bg-white border border-slate-200 rounded px-4 py-2 text-xs font-bold outline-none shadow-sm min-w-[300px]">
+                      {Object.keys(result.mrp).map(id => <option key={id} value={id}>{id}</option>)}
+                    </select>
+                    
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-x-auto">
+                      <table className="w-full text-left text-[10px] border-collapse">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                          <tr>
+                            <th className="px-4 py-3 sticky left-0 bg-slate-50 z-20 border-r border-slate-200 min-w-[150px]">Bucket</th>
+                            {Object.keys(result.mrp[selectedItem]).map(d => <th key={d} className="px-4 py-3 min-w-[100px] text-slate-400 font-medium">{d}</th>)}
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          <tr className="bg-slate-50/50">
+                             <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-slate-600">Starting Stock</td>
+                             {Object.values(result.mrp[selectedItem]).map((b, i) => (
+                               <td key={i} className="px-4 py-2 text-right text-slate-500">{formatNum((b.starting_stock || 0) + (b.inflow_onhand || 0))}</td>
+                             ))}
+                          </tr>
+                          <tr onClick={() => setExpandInflow(!expandInflow)} className="cursor-pointer hover:bg-slate-50">
+                             <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-indigo-600 flex items-center gap-2">
+                               {expandInflow ? <ChevronDown size={10}/> : <ChevronRight size={10}/>} Inflow
                              </td>
-                           ))}
-                        </tr>
-                        {expandInflow && (
-                           <>
-                              <tr className="bg-indigo-50/30"><td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ WIP</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.inflow_wip)}</td>)}</tr>
-                              <tr className="bg-indigo-50/30"><td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Supplier Stock</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.inflow_supplier)}</td>)}</tr>
-                              <tr className="bg-indigo-50/30"><td className="px-4 py-1 text-indigo-500 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Fresh Plan</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-indigo-500 font-bold">{formatNum(b.inflow_fresh)}</td>)}</tr>
-                           </>
-                        )}
-                        <tr onClick={() => setExpandOutflow(!expandOutflow)} className="cursor-pointer hover:bg-slate-50">
-                           <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-amber-600 flex items-center gap-2">
-                             {expandOutflow ? <ChevronDown size={10}/> : <ChevronRight size={10}/>} Outflow
-                           </td>
-                           {Object.values(result.mrp[selectedItem]).map((b, i) => (
-                             <td key={i} className="px-4 py-2 text-right font-bold text-amber-600">
-                               {formatNum((b.outflow_direct || 0) + (b.outflow_dep || 0))}
+                             {Object.values(result.mrp[selectedItem]).map((b, i) => (
+                               <td key={i} className="px-4 py-2 text-right font-bold text-indigo-600">
+                                 {formatNum((b.inflow_wip || 0) + (b.inflow_supplier || 0) + (b.inflow_fresh || 0))}
+                               </td>
+                             ))}
+                          </tr>
+                          {expandInflow && (
+                             <>
+                                <tr className="bg-indigo-50/30"><td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ WIP</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.inflow_wip)}</td>)}</tr>
+                                <tr className="bg-indigo-50/30"><td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Supplier Stock</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.inflow_supplier)}</td>)}</tr>
+                                <tr className="bg-indigo-50/30"><td className="px-4 py-1 text-indigo-500 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Fresh Plan</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-indigo-500 font-bold">{formatNum(b.inflow_fresh)}</td>)}</tr>
+                             </>
+                          )}
+                          <tr onClick={() => setExpandOutflow(!expandOutflow)} className="cursor-pointer hover:bg-slate-50">
+                             <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-amber-600 flex items-center gap-2">
+                               {expandOutflow ? <ChevronDown size={10}/> : <ChevronRight size={10}/>} Outflow
                              </td>
-                           ))}
-                        </tr>
-                        <tr className="bg-slate-100/50 border-t border-slate-200">
-                           <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-slate-800">Ending Stock</td>
-                           {Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className="px-4 py-2 text-right font-bold text-slate-800">{formatNum(bucket.ending_stock)}</td>)}
-                        </tr>
-                         <tr>
-                           <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-red-500">Shortage</td>
-                           {Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className={`px-4 py-2 text-right font-bold ${bucket.shortage > 0 ? 'text-red-500 bg-red-50' : 'text-slate-200'}`}>{bucket.shortage > 0 ? formatNum(bucket.shortage) : '-'}</td>)}
-                        </tr>
-                      </tbody>
-                    </table>
+                             {Object.values(result.mrp[selectedItem]).map((b, i) => (
+                               <td key={i} className="px-4 py-2 text-right font-bold text-amber-600">
+                                 {formatNum((b.outflow_direct || 0) + (b.outflow_dep || 0))}
+                               </td>
+                             ))}
+                          </tr>
+                          <tr className="bg-slate-100/50 border-t border-slate-200">
+                             <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-slate-800">Ending Stock</td>
+                             {Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className="px-4 py-2 text-right font-bold text-slate-800">{formatNum(bucket.ending_stock)}</td>)}
+                          </tr>
+                           <tr>
+                             <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-red-500">Shortage</td>
+                             {Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className={`px-4 py-2 text-right font-bold ${bucket.shortage > 0 ? 'text-red-500 bg-red-50' : 'text-slate-200'}`}>{bucket.shortage > 0 ? formatNum(bucket.shortage) : '-'}</td>)}
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* GLOBAL PURCHASE PLAN SECTION */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Truck size={16} className="text-indigo-600"/>
+                        <h3 className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Global Purchase Plan</h3>
+                      </div>
+                      {/* Updated label to indicate Excel export */}
+                      <button 
+                        onClick={handleExportPurchases}
+                        className="flex items-center gap-2 bg-slate-800 hover:bg-black text-white px-3 py-1.5 rounded text-[10px] font-bold transition-all shadow-md"
+                      >
+                        <Download size={12}/>
+                        EXPORT EXCEL
+                      </button>
+                    </div>
+
+                    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+                      <table className="w-full text-left text-[10px]">
+                        <thead className="bg-slate-50 border-b border-slate-200 font-black text-slate-400 uppercase tracking-tighter">
+                          <tr>
+                            <th className="px-6 py-4">Purchase Date</th>
+                            <th className="px-6 py-4">Arrival Date</th>
+                            <th className="px-6 py-4">Supplier</th>
+                            <th className="px-6 py-4">Item</th>
+                            <th className="px-6 py-4 text-right">Qty</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {result.planned_orders?.filter(o => o.type === 'Purchase').map((o, i) => (
+                            <tr key={i} className="hover:bg-indigo-50/30 transition-colors">
+                              <td className="px-6 py-3 text-slate-600 font-medium">{o.start}</td>
+                              <td className="px-6 py-3 text-slate-400">{o.finish}</td>
+                              <td className="px-6 py-3 font-bold text-slate-800">{o.supplier}</td>
+                              <td className="px-6 py-3 font-mono text-indigo-600">{o.item}</td>
+                              <td className="px-6 py-3 text-right font-black">{formatNum(o.qty)}</td>
+                            </tr>
+                          ))}
+                          {result.planned_orders?.filter(o => o.type === 'Purchase').length === 0 && (
+                            <tr>
+                              <td colSpan="5" className="px-6 py-10 text-center text-slate-400 italic">No purchase orders planned for this horizon.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}
