@@ -58,7 +58,7 @@ export default function App() {
   const [files, setFiles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState(null);
-  const [activeTab, setActiveTab] = useState('data'); // Default to data tab for upload
+  const [activeTab, setActiveTab] = useState('data'); 
   const [selectedItem, setSelectedItem] = useState('');
   const [selectedTrace, setSelectedTrace] = useState(null);
   
@@ -86,7 +86,6 @@ export default function App() {
       }
       if (response.data.trace) setSelectedTrace(response.data.trace[0]);
       
-      // Auto-switch to summary after solving
       setActiveTab('executive');
     } catch (error) {
       console.error("Solver Error:", error);
@@ -167,7 +166,6 @@ export default function App() {
 
   return (
     <div className="flex h-screen bg-[#F8FAFC] text-slate-900 font-sans overflow-hidden">
-      {/* SIDEBAR */}
       <aside className="w-64 bg-[#0F172A] text-white flex flex-col shadow-2xl">
         <div className="p-6 border-b border-slate-700 bg-[#1E293B]">
           <div className="flex items-center gap-3">
@@ -207,7 +205,6 @@ export default function App() {
         </div>
       </aside>
 
-      {/* MAIN CONTENT */}
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="h-14 bg-white border-b border-slate-200 flex items-center justify-between px-8 shadow-sm z-10">
           <h2 className="text-[10px] font-black text-slate-400 uppercase tracking-[0.2em]">Workspace / {activeTab}</h2>
@@ -222,7 +219,6 @@ export default function App() {
         </header>
 
         <div className="flex-1 overflow-auto p-8">
-          {/* CONTENT: DATA MANAGEMENT TAB */}
           {activeTab === 'data' && (
             <div className="max-w-4xl mx-auto">
               <div className="mb-8">
@@ -264,7 +260,6 @@ export default function App() {
             </div>
           )}
 
-          {/* KPI CARDS (Only show if result exists) */}
           {result && activeTab !== 'data' && (
              <div className="grid grid-cols-4 gap-6 mb-8">
                 <KPICard label="Planned Orders" value={result?.summary?.total_planned_orders || 0} icon={<FileText className="text-blue-500"/>} />
@@ -274,7 +269,6 @@ export default function App() {
              </div>
           )}
 
-          {/* TAB: EXECUTIVE SUMMARY */}
           {result && activeTab === 'executive' && (
             <div className="bg-white p-8 rounded-xl border border-slate-200 shadow-sm h-[450px]">
               <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-8">Supply Inflow Horizon</h3>
@@ -291,7 +285,6 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB: NETWORK GRAPH */}
           {result && activeTab === 'network' && (
             <div className="flex flex-col h-full space-y-4">
               <div className="flex justify-between items-center">
@@ -315,7 +308,6 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB: PRODUCTION PLAN */}
           {result && activeTab === 'plan' && (
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
               <table className="w-full text-left text-xs">
@@ -345,7 +337,6 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB: MRP INVENTORY PLAN */}
           {result && activeTab === 'mrp' && (
             <div className="space-y-12 pb-20">
               <div className="space-y-6">
@@ -376,7 +367,31 @@ export default function App() {
                           <tr className="bg-indigo-50/30"><td className="px-4 py-1 text-indigo-500 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Fresh Plan</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-indigo-500 font-bold">{formatNum(b.inflow_fresh)}</td>)}</tr>
                         </>
                       )}
-                      <tr onClick={() => setExpandOutflow(!expandOutflow)} className="cursor-pointer hover:bg-slate-50"><td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-amber-600 flex items-center gap-2">{expandOutflow ? <ChevronDown size={10}/> : <ChevronRight size={10}/>} Outflow</td>{Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-2 text-right font-bold text-amber-600">{formatNum((b.outflow_direct || 0) + (b.outflow_dep || 0))}</td>)}</tr>
+                      
+                      {/* FIXED OUTFLOW EXPANSION SECTION */}
+                      <tr onClick={() => setExpandOutflow(!expandOutflow)} className="cursor-pointer hover:bg-slate-50">
+                        <td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-amber-600 flex items-center gap-2">
+                           {expandOutflow ? <ChevronDown size={10}/> : <ChevronRight size={10}/>} Outflow
+                        </td>
+                        {Object.values(result.mrp[selectedItem]).map((b, i) => (
+                           <td key={i} className="px-4 py-2 text-right font-bold text-amber-600">
+                             {formatNum((b.outflow_direct || 0) + (b.outflow_dep || 0))}
+                           </td>
+                        ))}
+                      </tr>
+                      {expandOutflow && (
+                         <>
+                            <tr className="bg-amber-50/30">
+                               <td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Direct Demand</td>
+                               {Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.outflow_direct)}</td>)}
+                            </tr>
+                            <tr className="bg-amber-50/30">
+                               <td className="px-4 py-1 text-slate-400 font-medium sticky left-0 bg-white border-r border-slate-200 pl-8">↳ Dependent Demand</td>
+                               {Object.values(result.mrp[selectedItem]).map((b, i) => <td key={i} className="px-4 py-1 text-right text-slate-400">{formatNum(b.outflow_dep)}</td>)}
+                            </tr>
+                         </>
+                      )}
+
                       <tr className="bg-slate-100/50 border-t border-slate-200"><td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-slate-800">Ending Stock</td>{Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className="px-4 py-2 text-right font-bold text-slate-800">{formatNum(bucket.ending_stock)}</td>)}</tr>
                       <tr><td className="px-4 py-2 font-black uppercase tracking-tighter sticky left-0 bg-white z-10 border-r border-slate-200 text-red-500">Shortage</td>{Object.values(result.mrp[selectedItem]).map((bucket, i) => <td key={i} className={`px-4 py-2 text-right font-bold ${bucket.shortage > 0 ? 'text-red-500 bg-red-50' : 'text-slate-200'}`}>{bucket.shortage > 0 ? formatNum(bucket.shortage) : '-'}</td>)}</tr>
                     </tbody>
@@ -384,7 +399,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* GLOBAL PURCHASE PLAN SECTION */}
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2"><Truck size={16} className="text-indigo-600"/><h3 className="text-[10px] font-black text-slate-800 uppercase tracking-widest">Global Purchase Plan</h3></div>
@@ -412,7 +426,6 @@ export default function App() {
             </div>
           )}
 
-          {/* TAB: TRACE RCA */}
           {result && activeTab === 'rca' && (
             <div className="grid grid-cols-4 gap-8 h-[600px]">
               <div className="col-span-1 space-y-2 overflow-auto pr-4 border-r border-slate-200">
@@ -438,7 +451,6 @@ export default function App() {
             </div>
           )}
 
-          {/* FALLBACK: SHOW DATA TAB IF NO RESULT */}
           {!result && activeTab !== 'data' && (
              <div className="flex flex-col items-center justify-center h-full text-center">
                 <Database size={48} className="text-slate-200 mb-4" />
