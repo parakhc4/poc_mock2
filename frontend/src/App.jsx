@@ -1,12 +1,13 @@
 import React, { useState, useMemo } from 'react';
 import axios from 'axios';
-import denoLogo from './assets/logo_deno.png';
 import * as XLSX from 'xlsx';
+// Import the logo to ensure Vite handles the asset path correctly
+import denoLogo from './assets/logo_deno.png'; 
 import { 
   LayoutDashboard, Database, Play, Box, Truck, BarChart3, 
   UploadCloud, FileText, Loader2, Search, ClipboardList, AlertCircle,
   Settings, ChevronRight, ChevronDown, Share2, Download, Trash2, CheckCircle2, Factory,
-  TrendingUp, AlertTriangle, Target, Activity
+  TrendingUp, AlertTriangle, Target, Activity, Calendar
 } from 'lucide-react';
 import { 
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, 
@@ -62,8 +63,12 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('data'); 
   const [selectedItem, setSelectedItem] = useState('');
   const [selectedTrace, setSelectedTrace] = useState(null);
+  
+  // --- PARAMETERS STATE ---
   const [isConstrained, setIsConstrained] = useState(true);
   const [buildAhead, setBuildAhead] = useState(true);
+  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
+
   const [expandInflow, setExpandInflow] = useState(false);
   const [expandOutflow, setExpandOutflow] = useState(false);
 
@@ -71,12 +76,10 @@ export default function App() {
   const metrics = useMemo(() => {
     if (!result) return null;
 
-    // 1. Demand & Fulfillment
     const totalDemandQty = result.trace.reduce((sum, t) => sum + (t.qty || 0), 0);
     const onTimeOrders = result.trace.filter(t => !t.steps.some(s => s.action === 'Infeasible')).length;
     const fulfillmentRate = ((onTimeOrders / result.trace.length) * 100).toFixed(1);
 
-    // 2. Global Shortages
     let totalShortageQty = 0;
     const itemShortages = [];
     Object.keys(result.mrp).forEach(item => {
@@ -85,7 +88,6 @@ export default function App() {
       if (itemSum > 0) itemShortages.push({ item, qty: itemSum });
     });
 
-    // 3. Constraint Analysis (Pie Chart Data)
     const constraints = {};
     result.trace.forEach(t => {
       t.steps.filter(s => s.action === 'Infeasible').forEach(s => {
@@ -95,7 +97,6 @@ export default function App() {
     });
     const pieData = Object.keys(constraints).map(name => ({ name, value: constraints[name] }));
 
-    // 4. Cumulative Supply vs Demand (Area Chart Data)
     const dates = Object.keys(result.mrp[Object.keys(result.mrp)[0]]);
     let cumDemand = 0, cumSupply = 0;
     const cumulativeData = dates.map(d => {
@@ -122,7 +123,8 @@ export default function App() {
     const formData = new FormData();
     files.forEach(file => formData.append('files', file));
     formData.append('horizon', 30);
-    formData.append('start_date', "2025-12-01"); 
+    // Passing the dynamic startDate from state
+    formData.append('start_date', startDate); 
     formData.append('is_constrained', isConstrained);
     formData.append('build_ahead', buildAhead);
 
@@ -195,16 +197,50 @@ export default function App() {
     <div className="flex h-screen bg-[#F8FAFC] text-slate-900 font-sans overflow-hidden">
       <aside className="w-64 bg-[#0F172A] text-white flex flex-col shadow-2xl">
         <div className="p-6 border-b border-slate-700 bg-[#1E293B] flex items-center gap-3">
-        {/* <div className="w-8 h-8 bg-indigo-500 rounded flex items-center justify-center overflow-hidden"> */}
-          <img
-            src={denoLogo} // Use the imported variable here
-            alt="icon"
-            className="w-10 h-10 object-cover"
-          />
-        {/* </div> */}
-          {/* <span className="font-bold text-sm tracking-widest uppercase">Deno</span> */}
+          {/* <div className="w-8 h-8 bg-indigo-500 rounded flex items-center justify-center overflow-hidden"> */}
+            <img src={denoLogo} alt="icon" className="w-10 h-10 object-cover" />
+          {/* </div> */}
+          <span className="font-bold text-sm tracking-widest uppercase">Deno</span>
         </div>
-        <nav className="flex-1 p-4 space-y-1 mt-4 overflow-y-auto">
+
+        {/* --- MOVED SOLVER PARAMETERS SECTION --- */}
+        <div className="p-6 bg-[#1E293B] border-b border-slate-700">
+          <div className="flex items-center gap-2 mb-6 text-indigo-400">
+            <Settings size={16} />
+            <span className="text-[11px] font-black uppercase tracking-widest">Solver Parameters</span>
+          </div>
+          <div className="space-y-5">
+            {/* Start Date Selector */}
+            <div className="space-y-2">
+               <label className="text-[9px] font-bold text-slate-400 uppercase flex items-center gap-1.5">
+                 <Calendar size={10}/> Planning Start Date
+               </label>
+               <input 
+                 type="date" 
+                 value={startDate}
+                 onChange={(e) => setStartDate(e.target.value)}
+                 className="w-full bg-[#0F172A] border border-slate-600 rounded px-3 py-1.5 text-xs text-slate-200 focus:border-indigo-500 outline-none transition-colors"
+               />
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-300">Constrained</span>
+              <button onClick={() => setIsConstrained(!isConstrained)} className={`w-8 h-4 rounded-full relative transition-colors ${isConstrained ? 'bg-indigo-500' : 'bg-slate-600'}`}>
+                <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${isConstrained ? 'translate-x-4' : 'translate-x-0'}`} />
+              </button>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium text-slate-300">Build Ahead</span>
+              <button onClick={() => setBuildAhead(!buildAhead)} className={`w-8 h-4 rounded-full relative transition-colors ${buildAhead ? 'bg-indigo-500' : 'bg-slate-600'}`}>
+                <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${buildAhead ? 'translate-x-4' : 'translate-x-0'}`} />
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        {/* Navigation Tabs */}
+        <nav className="flex-1 p-4 space-y-1 mt-2 overflow-y-auto">
           <NavItem icon={<Database size={18}/>} label="Data Management" active={activeTab === 'data'} onClick={() => setActiveTab('data')} />
           <NavItem icon={<LayoutDashboard size={18}/>} label="Executive Summary" active={activeTab === 'executive'} onClick={() => setActiveTab('executive')} disabled={!result} />
           <NavItem icon={<ClipboardList size={18}/>} label="MRP Inventory Plan" active={activeTab === 'mrp'} onClick={() => setActiveTab('mrp')} disabled={!result} />
@@ -212,13 +248,6 @@ export default function App() {
           <NavItem icon={<Truck size={18}/>} label="Production Plan" active={activeTab === 'plan'} onClick={() => setActiveTab('plan')} disabled={!result} />
           <NavItem icon={<Search size={18}/>} label="Trace RCA" active={activeTab === 'rca'} onClick={() => setActiveTab('rca')} disabled={!result} />
         </nav>
-        <div className="p-4 bg-[#1E293B] border-t border-slate-700">
-          <div className="flex items-center gap-2 mb-4 text-slate-400"><Settings size={14} /><span className="text-[10px] font-bold uppercase tracking-widest">Solver Parameters</span></div>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between"><span className="text-xs font-medium text-slate-300">Constrained</span><button onClick={() => setIsConstrained(!isConstrained)} className={`w-8 h-4 rounded-full relative ${isConstrained ? 'bg-indigo-500' : 'bg-slate-600'}`}><div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${isConstrained ? 'translate-x-4' : 'translate-x-0'}`} /></button></div>
-            <div className="flex items-center justify-between"><span className="text-xs font-medium text-slate-300">Build Ahead</span><button onClick={() => setBuildAhead(!buildAhead)} className={`w-8 h-4 rounded-full relative ${buildAhead ? 'bg-indigo-500' : 'bg-slate-600'}`}><div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${buildAhead ? 'translate-x-4' : 'translate-x-0'}`} /></button></div>
-          </div>
-        </div>
       </aside>
 
       <main className="flex-1 flex flex-col overflow-hidden">
@@ -257,7 +286,6 @@ export default function App() {
 
           {result && activeTab === 'executive' && metrics && (
             <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-500">
-              {/* KPI Section */}
               <div className="grid grid-cols-4 gap-6">
                 <KPICard label="Fulfillment Rate" value={`${metrics.fulfillmentRate}%`} icon={<Target className="text-indigo-500"/>} trend={metrics.fulfillmentRate > 90 ? "Healthy" : "Attention"} />
                 <KPICard label="On-Time Delivery" value={metrics.onTimeOrders} icon={<Activity className="text-green-500"/>} trend={`of ${result.trace.length} Orders`} />
@@ -265,7 +293,6 @@ export default function App() {
                 <KPICard label="Planned Qty" value={formatNum(metrics.totalDemandQty)} icon={<TrendingUp className="text-blue-500"/>} />
               </div>
 
-              {/* Chart Section */}
               <div className="grid grid-cols-3 gap-6">
                 <div className="col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm h-[400px]">
                   <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-6">Cumulative Supply vs Demand</h3>
@@ -302,7 +329,6 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Actionable Insights */}
               <div className="grid grid-cols-2 gap-6">
                 <div className="bg-white p-6 rounded-xl border border-slate-200">
                   <h3 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4">Critical Items (Shortage Risk)</h3>
